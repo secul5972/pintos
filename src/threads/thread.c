@@ -88,7 +88,7 @@ void
 thread_init (void) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
-  lock_init(&l_lock);
+  lock_init(&f_lock);
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
@@ -475,15 +475,13 @@ init_thread (struct thread *t, const char *name, int priority)
 
   //init semaphore: value = 0
   sema_init(&t->c_sema, 0);
-#endif
 /***********************************************************/
 /**pj2******************************************************/
-  lock_init(&t->load_lock);
   t->fd_cnt = 2;
   memset(t->fd, 0, sizeof(t->fd));
-  t->pa = running_thread();
   sema_init(&t->m_sema, 0);
 /***********************************************************/
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

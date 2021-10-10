@@ -45,9 +45,6 @@ process_execute (const char *file_name)
     i++;
   }
   parsed_name[i] = 0;
-  /*
-  if(!filesys_open(parsed_name))
-	return -1;*/
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (parsed_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
@@ -70,9 +67,9 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   
-  lock_acquire(&l_lock);
+  lock_acquire(&f_lock);
   success = load (file_name, &if_.eip, &if_.esp);
-  lock_release(&l_lock);
+  lock_release(&f_lock);
   
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -283,7 +280,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   while(i < tok_cnt){
 	tok[i++] = strtok_r(NULL, " ", &tmp_ptr);
   }
-
+  if (tok[tok_cnt-1] == 0)
+	tok_cnt--;
   /****************************************************/
 
   /* Open executable file. */

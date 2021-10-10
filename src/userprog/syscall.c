@@ -8,14 +8,11 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 
-struct lock f_lock;
-
 static void syscall_handler (struct intr_frame *);
 
 void
 syscall_init (void) 
 {
-  lock_init(&f_lock);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -59,14 +56,14 @@ tid_t sys_exec(const char *cmd_line){
   exec_name[i] = 0;
 
   //check wrong exec_name
-  lock_acquire(&l_lock);
+  lock_acquire(&f_lock);
   struct file *f;
   if(!(f = filesys_open(exec_name))){
-	lock_release(&l_lock);
+	lock_release(&f_lock);
 	return -1;
   }
   file_close(f);
-  lock_release(&l_lock);
+  lock_release(&f_lock);
   return process_execute(cmd_line);
 }
 
@@ -85,13 +82,8 @@ int sys_read(int fd, void *buffer, unsigned size){
 	//if don't loop 'size' time , error
 	return (i != size ? -1 : i);
   }
-  else if(2 <= fd && fd < 128){
-	if(fd >= t->fd_cnt){
-	  return -1;
-    }
-	int ret = file_read(t->fd[fd], buffer, size);
-	return ret;
-  }
+  else if(2 <= fd && fd < t->fd_cnt)
+	return file_read(t->fd[fd], buffer, size);
   return -1;
 }
 
@@ -102,13 +94,8 @@ int sys_write(int fd, const void *buffer, unsigned size){
 	putbuf(buffer, size);
 	return size;
   }
-  else if(2 <= fd && fd < 128){
-	if(fd >= t->fd_cnt){
-	  return -1;
-	}
-	int ret = file_write(t->fd[fd], buffer, size);
-	return ret;
-  }
+  else if(2 <= fd && fd < t->fd_cnt)
+	return file_write(t->fd[fd], buffer, size);
   return -1;
 }
 
@@ -137,6 +124,7 @@ bool sys_create(const char *file, unsigned initial_size){
 }
 
 bool sys_remove(const char *file){
+  chk_addr_area(file, 0, 0);
   return filesys_remove(file);
 }
 
@@ -200,15 +188,15 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  break;
 	case SYS_READ:
 	  chk_addr_area(f->esp, 4, 12);
-	  lock_acquire(&l_lock);
+	  lock_acquire(&f_lock);
 	  f->eax = sys_read(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
-	  lock_release(&l_lock);
+	  lock_release(&f_lock);
 	  break;
 	case SYS_WRITE:
 	  chk_addr_area(f->esp, 4, 12);
-	  lock_acquire(&l_lock);
+	  lock_acquire(&f_lock);
 	  f->eax = sys_write(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
-	  lock_release(&l_lock);
+	  lock_release(&f_lock);
 	  break;
 	case SYS_FIBO:
 	  chk_addr_area(f->esp, 4, 4);
@@ -220,21 +208,21 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  break;
 	case SYS_CREATE:
 	  chk_addr_area(f->esp, 4, 8);
-	  lock_acquire(&l_lock);
+	  lock_acquire(&f_lock);
 	  f->eax = sys_create((char *)*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
-	  lock_release(&l_lock);
+	  lock_release(&f_lock);
 	  break;
 	case SYS_REMOVE:
 	  chk_addr_area(f->esp, 4, 4);
-	  lock_acquire(&l_lock);
+	  lock_acquire(&f_lock);
 	  f->eax = sys_remove((char *)*(uint32_t *)(f->esp + 4));
-	  lock_release(&l_lock);
+	  lock_release(&f_lock);
 	  break;
 	case SYS_OPEN:
 	  chk_addr_area(f->esp, 4, 4);
-	  lock_acquire(&l_lock);
+	  lock_acquire(&f_lock);
 	  f->eax = sys_open((char *)*(uint32_t *)(f->esp + 4));
-	  lock_release(&l_lock);
+	  lock_release(&f_lock);
 	  break;
 	case SYS_CLOSE:
 	  chk_addr_area(f->esp, 4, 4);
@@ -248,11 +236,15 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  break;
 	case SYS_SEEK:
 	  chk_addr_area(f->esp, 4, 8);
+	  lock_acquire(&f_lock);
 	  sys_seek(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
+	  lock_release(&f_lock);
 	  break;
 	case SYS_TELL:
 	  chk_addr_area(f->esp, 4, 4);
+	  lock_acquire(&f_lock);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
+	  lock_release(&f_lock);
 	  break;
   }
 }
