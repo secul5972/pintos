@@ -125,7 +125,6 @@ main (int argc, char *argv[])
   for (i = 0; i < howmany; i++)
     {
       pid_t child_pid;
-
       /* Spawn a child that will be abnormally terminated.
          To speed the test up, do this only for processes
          spawned at a certain depth. */

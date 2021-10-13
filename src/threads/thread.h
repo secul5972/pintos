@@ -6,9 +6,6 @@
 #include <stdint.h>
 #include "synch.h"
 
-/**pj2**************************************************/
-struct lock f_lock;
-/*******************************************************/
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -112,6 +109,9 @@ struct thread
 	int fd_cnt;
 	struct file *t_file;
 	struct semaphore m_sema;
+	int flag;
+	struct thread *pa;
+	struct semaphore l_sema;
 /***********************************************************/
 #endif
 

@@ -47,8 +47,22 @@ process_execute (const char *file_name)
   parsed_name[i] = 0;
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (parsed_name, PRI_DEFAULT, start_process, fn_copy);
+  sema_down(&thread_current()->l_sema);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  
+  struct thread *t = 0;
+  struct list_elem *e_head, *e_end, *e_curr;
+  int status = -1;
+  
+  //tid to thread 
+  e_head = list_head(&thread_current()->c_list);
+  e_end = list_end(e_head);
+  for(e_curr = e_head; e_curr != e_end; e_curr = list_next(e_curr)){
+    t = list_entry(e_curr, struct thread, c_elem);
+	if(t->flag)
+	  return process_wait(tid);
+  }
   return tid;
 }
 
@@ -67,14 +81,15 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   
-  lock_acquire(&f_lock);
   success = load (file_name, &if_.eip, &if_.esp);
-  lock_release(&f_lock);
   
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  sema_up(&thread_current()->pa->l_sema);
+  if (!success) {
+	thread_current()->flag = 1;
+	sys_exit(-1);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -292,8 +307,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-  t->t_file = file;
-  file_deny_write(file);
+  //t->t_file = file;
+  //file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -424,7 +439,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  if(!success)
+  //if(!success)
     file_close (file);
   return success;
 }

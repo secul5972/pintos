@@ -88,7 +88,6 @@ void
 thread_init (void) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
-  lock_init(&f_lock);
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
@@ -480,6 +479,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->fd_cnt = 2;
   memset(t->fd, 0, sizeof(t->fd));
   sema_init(&t->m_sema, 0);
+  t->flag = 0;
+  t->pa = running_thread();
+  t->t_file = 0;
+  sema_init(&t->l_sema, 0);
 /***********************************************************/
 #endif
 }
