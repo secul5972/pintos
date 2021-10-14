@@ -159,7 +159,7 @@ int sys_open(const char *file){
   lock_release(&f_lock);
   if(f){
 	if(t->fd_cnt < 128){
-	  //file == threadname -> deny_write
+	  //file == thread_name -> deny_write
 	  if(!strcmp(t->name, file))
 		file_deny_write(f);
 	  t->fd[t->fd_cnt++] = f;

@@ -480,7 +480,6 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&t->m_sema, 0);
   t->flag = 0;
   t->pa = running_thread();
-  t->t_file = 0;
   sema_init(&t->l_sema, 0);
 /***********************************************************/
 #endif

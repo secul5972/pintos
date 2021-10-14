@@ -103,11 +103,9 @@ struct thread
 	struct list c_list;
 	struct list_elem c_elem;
 	struct semaphore c_sema;
-/***********************************************************/
 /**pj2******************************************************/
 	struct file *fd[128];
 	int fd_cnt;
-	struct file *t_file;
 	struct semaphore m_sema;
 	int flag;
 	struct thread *pa;
