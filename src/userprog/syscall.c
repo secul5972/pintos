@@ -38,21 +38,10 @@ void sys_exit(int status){
   printf("%s: exit(%d)\n", thread_name(), status);
   //store status in pointer value
   t->exit_status = status;
-  //file_close(t->t_file);
+  //close file descriptor
   int i = t->fd_cnt - 1;
   while(i >= 2)
 	sys_close(i--);
-  
-  /*struct list_elem *e_head, *e_end, *e_curr;
-  
-  //tid to thread 
-  e_head = list_head(&thread_current()->c_list);
-  e_end = list_end(e_head);
-  for(e_curr = e_head; e_curr != e_end; e_curr = list_next(e_curr)){
-    t = list_entry(e_curr, struct thread, c_elem);
-	process_wait(t->tid);
-  }
-  */
   thread_exit();
 }
 
@@ -70,13 +59,11 @@ tid_t sys_exec(const char *cmd_line){
 
   //check wrong exec_name
   lock_acquire(&f_lock);
-  struct file *f;
-  if(!(f = filesys_open(exec_name))){
-	lock_release(&f_lock);
-	return -1;
-  }
-  file_close(f);
+  struct file *f = filesys_open(exec_name);
   lock_release(&f_lock);
+  if(!f)
+	return -1;
+  file_close(f);
   return process_execute(cmd_line);
 }
 
@@ -87,42 +74,45 @@ int sys_wait(tid_t pid){
 int sys_read(int fd, void *buffer, unsigned size){
   chk_addr_area(buffer, 0, 0);
   struct thread *t = thread_current();
-  lock_acquire(&f_lock);
   int i = 0;
   if(fd == 0){
 	//save one char by one
+	lock_acquire(&f_lock);
 	while(i < size)
 	  ((char *)buffer)[i++] = input_getc();
 	//if don't loop 'size' time , error
 	lock_release(&f_lock);
-	return (i != size ? -1 : i);
+	return i;
   }
   else if(2 <= fd && fd < t->fd_cnt){
+	//read using file descriptor
+	lock_acquire(&f_lock);
 	int ret = file_read(t->fd[fd], buffer, size);
 	lock_release(&f_lock);
 	return ret;
   }
-  lock_release(&f_lock);
   return -1;
 }
 
 int sys_write(int fd, const void *buffer, unsigned size){
   chk_addr_area(buffer, 0, 0);
   struct thread *t = thread_current();
-  lock_acquire(&f_lock);
   if(fd == 1){
+	lock_acquire(&f_lock);
 	putbuf(buffer, size);
 	lock_release(&f_lock);
 	return size;
   }
   else if(2 <= fd && fd < t->fd_cnt){
+	//write using file descriptor
+	lock_acquire(&f_lock);
+	//deny writing executing file
 	if(chk_deny_write(t->fd[fd]))
 		file_deny_write(t->fd[fd]);
 	int ret = file_write(t->fd[fd], buffer, size);
 	lock_release(&f_lock);
 	return ret;
   }
-  lock_release(&f_lock);
   return -1;
 }
 
@@ -147,12 +137,18 @@ int max_of_four_int(int a, int b, int c, int d){
 /**pj2****************************************************/
 bool sys_create(const char *file, unsigned initial_size){
 	chk_addr_area(file, 0, 0);
-	return filesys_create(file, initial_size);
+	lock_acquire(&f_lock);
+	int ret = filesys_create(file, initial_size);
+	lock_release(&f_lock);
+	return ret;
 }
 
 bool sys_remove(const char *file){
   chk_addr_area(file, 0, 0);
-  return filesys_remove(file);
+  lock_acquire(&f_lock);
+  int ret = filesys_remove(file);
+  lock_release(&f_lock);
+  return ret;
 }
 
 int sys_open(const char *file){
@@ -160,16 +156,16 @@ int sys_open(const char *file){
   struct thread *t = thread_current();
   lock_acquire(&f_lock);
   struct file *f = filesys_open(file);
+  lock_release(&f_lock);
   if(f){
 	if(t->fd_cnt < 128){
+	  //file == threadname -> deny_write
 	  if(!strcmp(t->name, file))
 		file_deny_write(f);
 	  t->fd[t->fd_cnt++] = f;
-	  lock_release(&f_lock);
 	  return t->fd_cnt - 1;
 	}
   }
-  lock_release(&f_lock);
   return -1;
 }
 
@@ -177,20 +173,30 @@ void sys_close(int fd){
  struct thread *t = thread_current();
  if(fd < 2 || fd >= t->fd_cnt)
    sys_exit(-1);
+ lock_acquire(&f_lock);
  file_close(t->fd[fd]);
+ lock_release(&f_lock);
  t->fd[fd] = 0;
 }
 
 int sys_filesize(int fd){
-  return file_length(thread_current()->fd[fd]);
+  lock_acquire(&f_lock);
+  int ret =  file_length(thread_current()->fd[fd]);
+  lock_release(&f_lock);
+  return ret;
 }
 
 void sys_seek(int fd, unsigned position){
+  lock_acquire(&f_lock);
   file_seek(thread_current()->fd[fd], position);
+  lock_release(&f_lock);
 }
 
 unsigned sys_tell(int fd){
-  return file_tell(thread_current()->fd[fd]);
+  lock_acquire(&f_lock);
+  int ret =  file_tell(thread_current()->fd[fd]);
+  lock_release(&f_lock);
+  return ret;
 }
 
 /*********************************************************/
