@@ -2,6 +2,7 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include <string.h>
 
 /* An open file. */
 struct file 
@@ -166,6 +167,10 @@ file_tell (struct file *file)
   ASSERT (file != NULL);
   return file->pos;
 }
-int chk_deny_write(struct file *file){
-  return file->deny_write;
+
+void chk_deny_write(struct file *file, const char *t_name, const char *file_name){
+  if(t_name && !strcmp(t_name, file_name))
+	file_deny_write(file);
+  else if(!t_name && file->deny_write)
+	file_deny_write(file);
 }

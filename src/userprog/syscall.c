@@ -107,8 +107,7 @@ int sys_write(int fd, const void *buffer, unsigned size){
 	//write using file descriptor
 	lock_acquire(&f_lock);
 	//deny writing executing file
-	if(chk_deny_write(t->fd[fd]))
-		file_deny_write(t->fd[fd]);
+	chk_deny_write(t->fd[fd], 0, 0);
 	int ret = file_write(t->fd[fd], buffer, size);
 	lock_release(&f_lock);
 	return ret;
@@ -160,8 +159,7 @@ int sys_open(const char *file){
   if(f){
 	if(t->fd_cnt < 128){
 	  //file == thread_name -> deny_write
-	  if(!strcmp(t->name, file))
-		file_deny_write(f);
+	  chk_deny_write(f, t->name, file);
 	  t->fd[t->fd_cnt++] = f;
 	  return t->fd_cnt - 1;
 	}

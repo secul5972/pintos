@@ -55,21 +55,10 @@ process_execute (const char *file_name)
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
 
-  /**pj2**************************************************/
-  struct thread *t = 0;
-  struct list_elem *e_head, *e_end, *e_curr;
-  int status = -1;
-  
-  e_head = list_head(&thread_current()->c_list);
-  e_end = list_end(e_head);
-  for(e_curr = e_head; e_curr != e_end; e_curr = list_next(e_curr)){
-	//check all child thread
-    t = list_entry(e_curr, struct thread, c_elem);
-	//flag == 1 is error thread
-	if(t->flag)
-	  return process_wait(tid);
-  }
-  /*******************************************************/
+ /**pj2**************************************************/
+  if(find_thread(-1))
+	return process_wait(tid);
+ /*******************************************************/
 
   return tid;
 }
@@ -127,26 +116,17 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  struct thread *t = 0;
-  struct list_elem *e_head, *e_end, *e_curr;
+  struct thread *t = find_thread(child_tid);
   int status = -1;
-  
-  //tid to thread 
-  e_head = list_head(&thread_current()->c_list);
-  e_end = list_end(e_head);
-  for(e_curr = e_head; e_curr != e_end; e_curr = list_next(e_curr)){
-    t = list_entry(e_curr, struct thread, c_elem);
-    if(child_tid == t->tid){
-	  sema_down(&t->c_sema);
-	  status = t->exit_status;
-	  list_remove(&t->c_elem);
+  if(t){
+	sema_down(&t->c_sema);
+	status = t->exit_status;
+	list_remove(&t->c_elem);
   //inserted for syn_read, syn_write
   //previous synchronization system can't pass syn_read, write
-	  sema_up(&t->m_sema);
-	  return status;
-	}
+	sema_up(&t->m_sema);
   }
-  return -1;
+  return status;
 }
 /**************************************************************/
 
@@ -610,3 +590,22 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+
+/**pj2******************************************************/
+struct thread *find_thread(int child_tid){
+  struct thread *t = 0;
+  struct list_elem *e_head, *e_end, *e_curr;
+  e_head = list_head(&thread_current()->c_list);
+  e_end = list_end(e_head);
+  for(e_curr = e_head; e_curr != e_end; e_curr = list_next(e_curr)){
+	//check all child thread
+    t = list_entry(e_curr, struct thread, c_elem);
+	//flag == 1 is error thread
+	if(child_tid == -1 && t->flag)
+	  return t;
+	if(child_tid == t->tid)
+	  return t;
+  }
+  return 0;
+}
+/***********************************************************/
