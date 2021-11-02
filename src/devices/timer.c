@@ -99,7 +99,7 @@ timer_sleep (int64_t ticks)
   ASSERT(!intr_context());
   old_level = intr_disable();
   t->tick = start + ticks;
-  list_push_back(&sleep_list, &t->elem);
+  list_insert_ordered(&sleep_list, &t->elem, p_cmp, 0);
   thread_block();
   intr_set_level(old_level);
   /**********************************************************/
