@@ -7,7 +7,13 @@
 #include "synch.h"
 
 /**pj3******************************************************/
+#define FSHIFT 1 << 14
 struct list sleep_list;
+int load_avg;
+extern bool thread_prior_aging;
+extern struct list ready_list;
+extern struct list all_list;
+extern struct thread *idle_thread;
 /***********************************************************/
 
 /* States in a thread's life cycle. */
@@ -99,7 +105,9 @@ struct thread
     struct list_elem elem;              /* List element. */
 
 /**pj3******************************************************/
-	int64_t tick;
+	int tick;
+	int recent_cpu;
+	int nice;
 /***********************************************************/
 
 #ifdef USERPROG
@@ -160,6 +168,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux);
 
+/**pj3*******************************************************/
+int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux);
+int f_mul(int a, int b);
+int f_div(int a, int b);
+/************************************************************/
 #endif /* threads/thread.h */

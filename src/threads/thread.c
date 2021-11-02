@@ -11,9 +11,16 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+
+/**pj3*******************************************************/
+#ifndef USERPROG
+bool thread_prior_aging;
+#endif
+/************************************************************/
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -22,14 +29,14 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-static struct list all_list;
+struct list all_list;
 
 /* Idle thread. */
-static struct thread *idle_thread;
+struct thread *idle_thread;
 
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;
@@ -94,6 +101,7 @@ thread_init (void)
 
   /**pj3**************************************************/
   list_init (&sleep_list);
+  load_avg = 0;
   /*******************************************************/
   
   /* Set up a thread structure for the running thread. */
@@ -101,6 +109,11 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
+  /**pj3**************************************************/
+  initial_thread->nice = 0;
+  initial_thread->recent_cpu = 0;
+  /*******************************************************/
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -138,8 +151,57 @@ thread_tick (void)
     kernel_ticks++;
 
   /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
+/**pj3******************************************************/
+  if(thread_mlfqs){
+	struct thread *t;
+	struct list_elem *e_curr, *e_end;
+
+	thread_current()->recent_cpu += FSHIFT;
+	if(timer_ticks() % TIMER_FREQ == 0){
+	  int ready_threads = list_size(&ready_list);
+	  if(thread_current() != idle_thread)
+		ready_threads += 1;
+	  load_avg = f_div(f_mul(59 * FSHIFT, load_avg) + ready_threads * FSHIFT, 60 * FSHIFT);
+	  e_curr = list_begin(&all_list);
+	  e_end = list_begin(&all_list);
+	  for(;e_curr != e_end; e_curr = list_next(e_curr)){
+		t = list_entry(e_curr, struct thread, allelem);
+		if(t != idle_thread){
+		  t->recent_cpu = f_mul(f_div(f_mul(2 * FSHIFT, load_avg), f_mul(2 * FSHIFT, load_avg) + FSHIFT), t->recent_cpu) + t->nice;
+		}
+	  }
+	}
+	if(timer_ticks() % 4 == 0){
+	  e_curr = list_begin(&all_list);
+	  e_end = list_begin(&all_list);
+	  int pri_max = PRI_MAX * FSHIFT;
+	  for(;e_curr != e_end; e_curr = list_next(e_curr)){
+		t = list_entry(e_curr, struct thread, allelem);
+		t->priority = (pri_max - f_div(t->recent_cpu, 4 * FSHIFT) - f_mul(t->nice, 2 * FSHIFT)) / FSHIFT;
+	  }
+	  if(t->priority > PRI_MAX)
+	    t->priority = PRI_MAX;
+	  if(t->priority < PRI_MIN)
+	    t->priority = PRI_MIN;
+	}
+	int max_pri = -1;
+	if(!list_empty(&ready_list)){
+	  t = list_entry(list_front(&ready_list), struct thread, elem);
+	  max_pri = t->priority;
+	}
+	if(thread_get_priority() < max_pri)
+	  intr_yield_on_return();
+
+  }
+  else{
+    if (++thread_ticks >= TIME_SLICE)
+	  intr_yield_on_return ();
+#ifndef USERPROG
+	if(thread_prior_aging)
+	  thread_aging();
+#endif
+  }
+/***********************************************************/
 }
 
 /* Prints thread statistics. */
@@ -339,6 +401,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  if(thread_mlfqs) return;
   int old_priority = thread_get_priority();
   thread_current ()->priority = new_priority;
   if(new_priority < old_priority)
@@ -356,31 +419,40 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  struct thread *t = thread_current();
+  int old_priority = t->priority;
+  int pri_max = PRI_MAX * FSHIFT;
+
+  t->nice = nice;
+  t->priority = (pri_max - t->recent_cpu / 4 - t->nice * 2)/FSHIFT;
+  if(t->priority > PRI_MAX)
+	t->priority = PRI_MAX;
+  if(t->priority < PRI_MIN)
+	t->priority = PRI_MIN;
+  if(t->priority < old_priority)
+	thread_yield();
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice; 
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (int64_t)100 * load_avg / FSHIFT;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (int64_t)100 * thread_current()->recent_cpu / FSHIFT;
+;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -473,8 +545,13 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
 
+/**pj3******************************************************/
+  t->recent_cpu = running_thread()->recent_cpu;
+  t->nice = running_thread()->nice;
+/***********************************************************/
+
+intr_set_level (old_level);
 /**pj1******************************************************/
 #ifdef USERPROG
   //init child_list and push child element
@@ -483,7 +560,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
   //init semaphore: value = 0
   sema_init(&t->c_sema, 0);
-/***********************************************************/
 /**pj2******************************************************/
   t->fd_cnt = 2;
   memset(t->fd, 0, sizeof(t->fd));
@@ -491,8 +567,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->flag = 0;
   t->pa = running_thread();
   sema_init(&t->l_sema, 0);
-/***********************************************************/
 #endif
+/***********************************************************/
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -609,6 +685,27 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
+/**pj3******************************************************/
 int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux){
   return list_entry(e1, struct thread, elem)->priority > list_entry(e2, struct thread, elem)->priority;
 }
+
+int f_mul(int a, int b){
+  return (int64_t)a * b / FSHIFT;
+}
+
+int f_div(int a, int b){
+  return (int64_t)a * FSHIFT/ b;
+}
+
+void thread_aging(void){
+  struct thread *t;
+  struct list_elem *e_curr, *e_end;
+  e_curr = list_begin(&ready_list);
+  e_end = list_end(&ready_list);
+  for(; e_curr != e_end; e_curr = list_next(e_curr)){
+	t = list_entry(e_curr, struct thread, elem);
+	t->priority++;
+  }
+}
+/***********************************************************/
