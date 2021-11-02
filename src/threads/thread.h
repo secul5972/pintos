@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include "synch.h"
 
+/**pj3******************************************************/
+struct list sleep_list;
+/***********************************************************/
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -95,7 +99,7 @@ struct thread
     struct list_elem elem;              /* List element. */
 
 /**pj3******************************************************/
-	int time;
+	int64_t tick;
 /***********************************************************/
 
 #ifdef USERPROG
@@ -156,5 +160,6 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux);
 
 #endif /* threads/thread.h */

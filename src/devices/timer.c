@@ -30,16 +30,11 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
-/**pj3******************************************************/
-struct list sleep_list;
-/***********************************************************/
-
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
 timer_init (void) 
 {
-  list_init(&sleep_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -100,11 +95,10 @@ timer_sleep (int64_t ticks)
 
   struct thread *t = thread_current();
   enum intr_level old_level;
-  
-  ASSERT (!intr_context());
-  
+ 
+  ASSERT(!intr_context());
   old_level = intr_disable();
-  t->time = start + ticks;
+  t->tick = start + ticks;
   list_push_back(&sleep_list, &t->elem);
   thread_block();
   intr_set_level(old_level);
@@ -193,8 +187,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
   e_curr = list_begin(&sleep_list);
   e_end = list_end(&sleep_list);
   while(e_curr != e_end){
-	t = list_entry(e_curr, struct thread, elem);
-	if(t->time <= ticks){
+    t = list_entry(e_curr, struct thread, elem);
+    if(t->tick <= ticks){
 	  e_curr = list_remove(e_curr);
 	  thread_unblock(t);
 	}
