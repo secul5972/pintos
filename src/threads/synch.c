@@ -113,6 +113,7 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+  /**pj3****************************************************************/
   int flag = 0;
   if (!list_empty (&sema->waiters)){
 	struct thread *t = 0, *max_t;
@@ -136,6 +137,7 @@ sema_up (struct semaphore *sema)
   if(flag)
 	thread_yield();
 #endif
+  /********************************************************************/
 }
 
 static void sema_test_helper (void *sema_);

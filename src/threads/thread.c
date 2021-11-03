@@ -153,36 +153,17 @@ thread_tick (void)
   /* Enforce preemption. */
 /**pj3******************************************************/
   if (thread_mlfqs){
-    struct thread *t;
-    struct list_elem *e_curr, *e_end;
-	if(thread_current() != idle_thread)
-      thread_current()->recent_cpu += FSHIFT;
+	if(t != idle_thread)
+      t->recent_cpu += FSHIFT;
     if (timer_ticks() % TIMER_FREQ == 0){
       int ready_threads = list_size(&ready_list);
-      if (thread_current() != idle_thread)
+      if (t != idle_thread)
         ready_threads += 1;
       load_avg = (59 * load_avg + ready_threads * FSHIFT) / 60;
-	  e_curr = list_begin(&all_list);
-      e_end = list_end(&all_list);
-      for (; e_curr != e_end; e_curr = list_next(e_curr)){
-        t = list_entry(e_curr, struct thread, allelem);
-        if (t != idle_thread){
-          t->recent_cpu = f_mul(f_div(2 * load_avg, 2 * load_avg + FSHIFT), t->recent_cpu) + t->nice * FSHIFT;
-        }
-      }
+	  thread_foreach(recpu_update, 0);
     }
     if (timer_ticks() % TIME_SLICE == 0){
-      e_curr = list_begin(&all_list);
-      e_end = list_end(&all_list);
-      int pri_max = PRI_MAX * FSHIFT;
-      for (; e_curr != e_end; e_curr = list_next(e_curr)){
-        t = list_entry(e_curr, struct thread, allelem);
-        t->priority = (pri_max - t->recent_cpu / 4 - t->nice * FSHIFT * 2) / FSHIFT;
-        if (t->priority > PRI_MAX)
-          t->priority = PRI_MAX;
-        if (t->priority < PRI_MIN)
-          t->priority = PRI_MIN;
-      }
+	  thread_foreach(pri_update, 0);
 	  intr_yield_on_return();
     }
   }
@@ -190,8 +171,15 @@ thread_tick (void)
 	if (++thread_ticks >= TIME_SLICE)
 	  intr_yield_on_return();
 #ifndef USERPROG
-    if (thread_prior_aging)
-	  thread_aging();
+    if (thread_prior_aging){
+	  struct list_elem *e_curr, *e_end;
+	  e_curr = list_begin(&ready_list);
+	  e_end = list_end(&ready_list);
+	  for(; e_curr != e_end; e_curr = list_next(e_curr)){
+		t = list_entry(e_curr, struct thread, elem);
+		t->priority++;
+	  }
+	}
 #endif
   }
   /***********************************************************/
@@ -413,11 +401,10 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   struct thread *t = thread_current();
-  int pri_max = PRI_MAX * FSHIFT;
   int old_priority = t->priority;
 
   t->nice = nice;
-  t->priority = (pri_max - t->recent_cpu / 4 - t->nice * FSHIFT * 2)/FSHIFT;
+  t->priority = f2i(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
   if(t->priority > PRI_MAX)
 	t->priority = PRI_MAX;
   if(t->priority < PRI_MIN)
@@ -691,14 +678,22 @@ int f_div(int a, int b){
   return (int64_t)a * FSHIFT/ b;
 }
 
-void thread_aging(void){
-  struct thread *t;
-  struct list_elem *e_curr, *e_end;
-  e_curr = list_begin(&ready_list);
-  e_end = list_end(&ready_list);
-  for(; e_curr != e_end; e_curr = list_next(e_curr)){
-	t = list_entry(e_curr, struct thread, elem);
-	t->priority++;
-  }
+int f2i(int a){
+  if(a >= 0)
+    return (a + FSHIFT / 2) / FSHIFT;
+  return (a - FSHIFT / 2) / FSHIFT;
+}
+
+void pri_update(struct thread *t, void *aux){
+  t->priority = f2i(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
+  if (t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  if (t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
+}
+
+void recpu_update(struct thread *t, void *aux){
+  if (t != idle_thread)
+	t->recent_cpu = f_mul(f_div(2 * load_avg, 2 * load_avg + FSHIFT), t->recent_cpu) + t->nice * FSHIFT;
 }
 /***********************************************************/

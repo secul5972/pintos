@@ -195,7 +195,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 	else
 	  e_curr = list_next(e_curr);
   }
-
   /**********************************************************/
 }
 

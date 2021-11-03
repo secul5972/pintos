@@ -173,5 +173,8 @@ int thread_get_load_avg (void);
 int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux);
 int f_mul(int a, int b);
 int f_div(int a, int b);
+int f2i(int a);
+void pri_update(struct thread *t, void *aux);
+void recpu_update(struct thread *t, void *aux);
 /************************************************************/
 #endif /* threads/thread.h */
