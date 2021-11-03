@@ -152,56 +152,49 @@ thread_tick (void)
 
   /* Enforce preemption. */
 /**pj3******************************************************/
-  if(thread_mlfqs){
-	struct thread *t;
-	struct list_elem *e_curr, *e_end;
-
-	thread_current()->recent_cpu += FSHIFT;
-	if(timer_ticks() % TIMER_FREQ == 0){
-	  int ready_threads = list_size(&ready_list);
-	  if(thread_current() != idle_thread)
-		ready_threads += 1;
-	  load_avg = f_div(f_mul(59 * FSHIFT, load_avg) + ready_threads * FSHIFT, 60 * FSHIFT);
+  if (thread_mlfqs){
+    struct thread *t;
+    struct list_elem *e_curr, *e_end;
+	if(thread_current() != idle_thread)
+      thread_current()->recent_cpu += FSHIFT;
+    if (timer_ticks() % TIMER_FREQ == 0){
+      int ready_threads = list_size(&ready_list);
+      if (thread_current() != idle_thread)
+        ready_threads += 1;
+      load_avg = (59 * load_avg + ready_threads * FSHIFT) / 60;
 	  e_curr = list_begin(&all_list);
-	  e_end = list_begin(&all_list);
-	  for(;e_curr != e_end; e_curr = list_next(e_curr)){
-		t = list_entry(e_curr, struct thread, allelem);
-		if(t != idle_thread){
-		  t->recent_cpu = f_mul(f_div(f_mul(2 * FSHIFT, load_avg), f_mul(2 * FSHIFT, load_avg) + FSHIFT), t->recent_cpu) + t->nice;
-		}
-	  }
-	}
-	if(timer_ticks() % 4 == 0){
-	  e_curr = list_begin(&all_list);
-	  e_end = list_begin(&all_list);
-	  int pri_max = PRI_MAX * FSHIFT;
-	  for(;e_curr != e_end; e_curr = list_next(e_curr)){
-		t = list_entry(e_curr, struct thread, allelem);
-		t->priority = (pri_max - f_div(t->recent_cpu, 4 * FSHIFT) - f_mul(t->nice, 2 * FSHIFT)) / FSHIFT;
-	  }
-	  if(t->priority > PRI_MAX)
-	    t->priority = PRI_MAX;
-	  if(t->priority < PRI_MIN)
-	    t->priority = PRI_MIN;
-	}
-	int max_pri = -1;
-	if(!list_empty(&ready_list)){
-	  t = list_entry(list_front(&ready_list), struct thread, elem);
-	  max_pri = t->priority;
-	}
-	if(thread_get_priority() < max_pri)
+      e_end = list_end(&all_list);
+      for (; e_curr != e_end; e_curr = list_next(e_curr)){
+        t = list_entry(e_curr, struct thread, allelem);
+        if (t != idle_thread){
+          t->recent_cpu = f_mul(f_div(2 * load_avg, 2 * load_avg + FSHIFT), t->recent_cpu) + t->nice * FSHIFT;
+        }
+      }
+    }
+    if (timer_ticks() % TIME_SLICE == 0){
+      e_curr = list_begin(&all_list);
+      e_end = list_end(&all_list);
+      int pri_max = PRI_MAX * FSHIFT;
+      for (; e_curr != e_end; e_curr = list_next(e_curr)){
+        t = list_entry(e_curr, struct thread, allelem);
+        t->priority = (pri_max - t->recent_cpu / 4 - t->nice * FSHIFT * 2) / FSHIFT;
+        if (t->priority > PRI_MAX)
+          t->priority = PRI_MAX;
+        if (t->priority < PRI_MIN)
+          t->priority = PRI_MIN;
+      }
 	  intr_yield_on_return();
-
+    }
   }
   else{
-    if (++thread_ticks >= TIME_SLICE)
-	  intr_yield_on_return ();
+	if (++thread_ticks >= TIME_SLICE)
+	  intr_yield_on_return();
 #ifndef USERPROG
-	if(thread_prior_aging)
+    if (thread_prior_aging)
 	  thread_aging();
 #endif
   }
-/***********************************************************/
+  /***********************************************************/
 }
 
 /* Prints thread statistics. */
@@ -420,17 +413,17 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   struct thread *t = thread_current();
-  int old_priority = t->priority;
   int pri_max = PRI_MAX * FSHIFT;
+  int old_priority = t->priority;
 
   t->nice = nice;
-  t->priority = (pri_max - t->recent_cpu / 4 - t->nice * 2)/FSHIFT;
+  t->priority = (pri_max - t->recent_cpu / 4 - t->nice * FSHIFT * 2)/FSHIFT;
   if(t->priority > PRI_MAX)
 	t->priority = PRI_MAX;
   if(t->priority < PRI_MIN)
 	t->priority = PRI_MIN;
-  if(t->priority < old_priority)
-	thread_yield();
+  if(t->priority > old_priority)
+  	thread_yield();
 }
 
 /* Returns the current thread's nice value. */
@@ -444,14 +437,14 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 {
-  return (int64_t)100 * load_avg / FSHIFT;
+  return ((int64_t)100 * load_avg + FSHIFT / 2) / FSHIFT;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return (int64_t)100 * thread_current()->recent_cpu / FSHIFT;
+  return ((int64_t)100 * thread_current()->recent_cpu + FSHIFT / 2 ) / FSHIFT;
 ;
 }
 

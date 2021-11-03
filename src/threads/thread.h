@@ -7,7 +7,7 @@
 #include "synch.h"
 
 /**pj3******************************************************/
-#define FSHIFT 1 << 14
+#define FSHIFT (1 << 14)
 struct list sleep_list;
 int load_avg;
 extern bool thread_prior_aging;
