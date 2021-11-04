@@ -412,8 +412,8 @@ thread_set_nice (int nice UNUSED)
   int old_priority = t->priority;
 
   t->nice = nice;
-  t->priority = f2i(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
-  if(t->priority > old_priority)
+  t->priority = f2pri(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
+  if(t->priority < old_priority)
   	thread_yield();
 }
 
@@ -550,7 +550,7 @@ intr_set_level (old_level);
   memset(t->fd, 0, sizeof(t->fd));
   sema_init(&t->m_sema, 0);
   t->flag = 0;
-  t->pa = running_thread()i
+  t->pa = running_thread();
   sema_init(&t->l_sema, 0);
 #endif
 /***********************************************************/
@@ -683,7 +683,7 @@ int f_div(int a, int b){
   return (int64_t)a * FSHIFT/ b;
 }
 
-int f2i(int a){
+int f2pri(int a){
   int ret;
   if(a >= 0)
     ret = (a + FSHIFT / 2) / FSHIFT;
@@ -697,7 +697,7 @@ int f2i(int a){
 }
 
 void pri_update(struct thread *t, void *aux){
-  t->priority = f2i(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
+  t->priority = f2pri(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
 }
 
 void recpu_update(struct thread *t, void *aux){

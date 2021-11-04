@@ -11,9 +11,6 @@
 struct list sleep_list;
 int load_avg;
 extern bool thread_prior_aging;
-extern struct list ready_list;
-extern struct list all_list;
-extern struct thread *idle_thread;
 /***********************************************************/
 
 /* States in a thread's life cycle. */
