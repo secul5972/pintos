@@ -100,6 +100,7 @@ thread_init (void)
   list_init (&all_list);
 
   /**pj3**************************************************/
+  //initailization
   list_init (&sleep_list);
   load_avg = 0;
   /*******************************************************/
@@ -111,6 +112,7 @@ thread_init (void)
   initial_thread->tid = allocate_tid ();
 
   /**pj3**************************************************/
+  //initailization
   initial_thread->nice = 0;
   initial_thread->recent_cpu = 0;
   /*******************************************************/
@@ -155,14 +157,18 @@ thread_tick (void)
   if (thread_mlfqs){
 	if(t != idle_thread)
       t->recent_cpu += FSHIFT;
+	//every second
     if (timer_ticks() % TIMER_FREQ == 0){
       int ready_threads = list_size(&ready_list);
       if (t != idle_thread)
         ready_threads += 1;
+	  //recalculate load_avg, recent_cpu
       load_avg = (59 * load_avg + ready_threads * FSHIFT) / 60;
 	  thread_foreach(recpu_update, 0);
     }
+	//every time slice(4 ticks)
     if (timer_ticks() % TIME_SLICE == 0){
+	  //recalculate priority
 	  thread_foreach(pri_update, 0);
 	  intr_yield_on_return();
     }
@@ -172,6 +178,7 @@ thread_tick (void)
 	  intr_yield_on_return();
 #ifndef USERPROG
     if (thread_prior_aging){
+	  //all priority in ready_list + 1
 	  struct list_elem *e_curr, *e_end;
 	  e_curr = list_begin(&ready_list);
 	  e_end = list_end(&ready_list);
@@ -355,6 +362,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
+	//ready_list ordered
 	list_insert_ordered(&ready_list, &cur->elem, p_cmp, 0);	
   cur->status = THREAD_READY;
   schedule ();
@@ -405,10 +413,6 @@ thread_set_nice (int nice UNUSED)
 
   t->nice = nice;
   t->priority = f2i(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
-  if(t->priority > PRI_MAX)
-	t->priority = PRI_MAX;
-  if(t->priority < PRI_MIN)
-	t->priority = PRI_MIN;
   if(t->priority > old_priority)
   	thread_yield();
 }
@@ -527,6 +531,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_push_back (&all_list, &t->allelem);
 
 /**pj3******************************************************/
+  //inherits value of parent
   t->recent_cpu = running_thread()->recent_cpu;
   t->nice = running_thread()->nice;
 /***********************************************************/
@@ -545,7 +550,7 @@ intr_set_level (old_level);
   memset(t->fd, 0, sizeof(t->fd));
   sema_init(&t->m_sema, 0);
   t->flag = 0;
-  t->pa = running_thread();
+  t->pa = running_thread()i
   sema_init(&t->l_sema, 0);
 #endif
 /***********************************************************/
@@ -679,17 +684,20 @@ int f_div(int a, int b){
 }
 
 int f2i(int a){
+  int ret;
   if(a >= 0)
-    return (a + FSHIFT / 2) / FSHIFT;
-  return (a - FSHIFT / 2) / FSHIFT;
+    ret = (a + FSHIFT / 2) / FSHIFT;
+  else
+    ret = (a - FSHIFT / 2) / FSHIFT;
+  if(ret > PRI_MAX)
+    ret = PRI_MAX;
+  if(ret < PRI_MIN)
+    ret = PRI_MIN;
+  return ret;
 }
 
 void pri_update(struct thread *t, void *aux){
   t->priority = f2i(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
-  if (t->priority > PRI_MAX)
-    t->priority = PRI_MAX;
-  if (t->priority < PRI_MIN)
-    t->priority = PRI_MIN;
 }
 
 void recpu_update(struct thread *t, void *aux){

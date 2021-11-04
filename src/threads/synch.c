@@ -113,9 +113,10 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  /**pj3****************************************************************/
+  /**pj3****************************************************/
   int flag = 0;
   if (!list_empty (&sema->waiters)){
+	//find max_priority
 	struct thread *t = 0, *max_t;
 	struct list_elem *e_curr, *e_end;
 	e_curr = list_begin(&sema->waiters);
@@ -126,6 +127,7 @@ sema_up (struct semaphore *sema)
 	  if(t->priority > max_t->priority)
 		max_t = t;
 	}
+	//remove and unblock
 	list_remove(&max_t->elem);
 	thread_unblock(max_t);
 	if(thread_get_priority() < max_t->priority)
@@ -134,10 +136,11 @@ sema_up (struct semaphore *sema)
   sema->value++;
   intr_set_level (old_level);
 #ifndef USERPROG
+  //max_priority > current_priority
   if(flag)
 	thread_yield();
 #endif
-  /********************************************************************/
+  /*********************************************************/
 }
 
 static void sema_test_helper (void *sema_);
