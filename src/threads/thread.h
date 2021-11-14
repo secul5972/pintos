@@ -105,7 +105,10 @@ struct thread
 	int tick;
 	int recent_cpu;
 	int nice;
+/**pj4******************************************************/
+	struct hash spt;
 /***********************************************************/
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

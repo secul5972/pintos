@@ -72,6 +72,10 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
+  /**pj4**************************************************/
+  spt_init();
+  /*******************************************************/
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -139,6 +143,7 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  spt_destroy(&cur->spt);
   pd = cur->pagedir;
   if (pd != NULL) 
     {
