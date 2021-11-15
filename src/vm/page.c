@@ -48,12 +48,21 @@ void spt_destroy(struct hash *spt){
   hash_destroy(spt, spte_free);
 }
 
-bool fault_handler(struct spt_entry *spte){
-  uint8_t *kpage = palloc_get_page(PAL_USER);
-  printf("%p\n", spte);
-  if(!load_file(kpage, spte) || !install_page(spte->va, kpage, spte->writable)){
-	palloc_free_page(kpage);
+bool load_file(void *kpage, struct spt_entry *spte){
+  if(file_read_at(spte->file, kpage, spte->read_bytes, spte->ofs) != (int)spte->read_bytes)
 	return false;
+  memset(kpage + spte->read_bytes, 0, spte->zero_bytes);
+  return true;
+}
+
+bool fault_handler(struct spt_entry *spte){
+  if(!spte->is_loaded){
+	uint8_t *kpage = palloc_get_page(PAL_USER);
+	if(!load_file(kpage, spte) || !install_page(spte->va, kpage, spte->writable)){
+	  palloc_free_page(kpage);
+	  return false;
+	}
+	spte->is_loaded = 1;
   }
 }
 

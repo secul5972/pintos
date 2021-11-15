@@ -27,6 +27,7 @@ bool insert_spte(struct hash *spt, struct spt_entry *spte);
 bool delete_spte(struct hash *spt, struct spt_entry *spte);
 struct spt_entry *find_spt_entry(void *va);
 void spte_free(struct hash_elem *he, void *aux);
+bool load_file(void *kpage, struct spt_entry *spte);
 bool fault_handler(struct spt_entry *spte);
 void spt_destroy(struct hash *spt);
 #endif

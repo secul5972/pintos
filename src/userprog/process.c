@@ -545,18 +545,23 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	  }
   /**pj4******************************************************/
 	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-	  spte->va = upage;
+	  spte->va = pg_round_down(upage);
 	  spte->writable = writable;
+	  spte->is_loaded = 0;
 	  spte->file = file;
 	  spte->ofs = ofs;
 	  spte->read_bytes = page_read_bytes;
 	  spte->zero_bytes = page_zero_bytes;
-	  insert_spte(&thread_current()->spt, spte);
+	  if(!insert_spte(&thread_current()->spt, spte)){
+		free(spte);
+		return false;
+	  }
   /***********************************************************/
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+	  ofs += page_read_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -582,9 +587,14 @@ setup_stack (void **esp)
 
   /**pj4******************************************************/
   struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-  spte->va = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  spte->va =pg_round_down( ((uint8_t *) PHYS_BASE) - PGSIZE);
   spte->writable = 1;
-  insert_spte(&thread_current()->spt, spte);
+  spte->is_loaded = 1;
+  if(!insert_spte(&thread_current()->spt, spte)){
+	free(spte);
+	palloc_free_page(kpage);
+	success = false;
+  }
   /***********************************************************/
   return success;
 }
@@ -626,15 +636,4 @@ struct thread *find_thread(int child_tid){
   }
   return 0;
 }
-bool load_file(void *kpage, struct spt_entry *spte){
-  file_seek(spte->file, spte->ofs);
-  int a = file_read(spte->file, kpage, spte->read_bytes);
-  if(a != (int)spte->read_bytes)
-	return false;
-  printf("bbb\n");
-  memset(kpage + spte->read_bytes, 0, spte->zero_bytes);
-  return true;
-}
-
-
 /***********************************************************/
