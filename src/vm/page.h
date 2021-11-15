@@ -1,13 +1,11 @@
 #ifndef PAGE_H
 # define PAGE_H
 
-#include <hash.h>
-#include "threads/synch.h"
-#include "lib/stdbool.h"
-
 #define VM_BIN 0
 #define VM_FILE 1
 #define VM_ANON 2
+
+#include <hash.h>
 
 struct spt_entry{
   uint8_t type;
@@ -17,13 +15,18 @@ struct spt_entry{
   bool is_loaded;
   struct file* file;
 
-  size_t offset;
+  size_t ofs;
   size_t read_bytes;
   size_t zero_bytes;
 
   struct hash_elem h_elem;
-}
+};
 
-void spt_init();
+void spt_init(void);
+bool insert_spte(struct hash *spt, struct spt_entry *spte);
+bool delete_spte(struct hash *spt, struct spt_entry *spte);
+struct spt_entry *find_spt_entry(void *va);
+void spte_free(struct hash_elem *he, void *aux);
+bool fault_handler(struct spt_entry *spte);
 void spt_destroy(struct hash *spt);
-
+#endif

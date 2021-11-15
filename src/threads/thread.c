@@ -671,7 +671,7 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 /**pj3******************************************************/
-int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux){
+int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux UNUSED){
   return list_entry(e1, struct thread, elem)->priority > list_entry(e2, struct thread, elem)->priority;
 }
 
@@ -696,11 +696,11 @@ int f2pri(int a){
   return ret;
 }
 
-void pri_update(struct thread *t, void *aux){
+void pri_update(struct thread *t, void *aux UNUSED){
   t->priority = f2pri(PRI_MAX * FSHIFT - t->recent_cpu / 4 - t->nice * FSHIFT * 2);
 }
 
-void recpu_update(struct thread *t, void *aux){
+void recpu_update(struct thread *t, void *aux UNUSED){
   if (t != idle_thread)
 	t->recent_cpu = f_mul(f_div(2 * load_avg, 2 * load_avg + FSHIFT), t->recent_cpu) + t->nice * FSHIFT;
 }

@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "synch.h"
+#include <hash.h>
 
 /**pj3******************************************************/
 #define FSHIFT (1 << 14)
@@ -115,7 +116,7 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 
 /**pj1******************************************************/
-	int *exit_status;
+	int exit_status;
 	struct list c_list;
 	struct list_elem c_elem;
 	struct semaphore c_sema;
@@ -173,7 +174,7 @@ int thread_get_load_avg (void);
 int p_cmp(struct list_elem *e1, struct list_elem *e2, void *aux);
 int f_mul(int a, int b);
 int f_div(int a, int b);
-int f2i(int a);
+int f2pri(int a);
 void pri_update(struct thread *t, void *aux);
 void recpu_update(struct thread *t, void *aux);
 /************************************************************/

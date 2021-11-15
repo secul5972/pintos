@@ -36,7 +36,7 @@ static inline void *pg_round_up (const void *va) {
 }
 
 /* Round down to nearest page boundary. */
-static inline void *pg_round_down (const void *va) {
+inline void *pg_round_down (const void *va) {
   return (void *) ((uintptr_t) va & ~PGMASK);
 }
 

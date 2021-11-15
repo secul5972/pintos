@@ -17,6 +17,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/page.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -75,7 +77,6 @@ start_process (void *file_name_)
   /**pj4**************************************************/
   spt_init();
   /*******************************************************/
-  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -87,7 +88,6 @@ start_process (void *file_name_)
   
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  
   if (!success) {
 	/**pj2*********************************************/
 	//if load fail, thread_error
@@ -450,7 +450,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 /* load() helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
+bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -527,26 +527,32 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
+	  
+	  uint8_t *kpage = palloc_get_page(PAL_USER);
+	  if(kpage == NULL)
+		false;
+	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+	  {
+		palloc_free_page(kpage);
+		return false;
+	  }
+	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
-
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+	  if(!install_page(upage, kpage, writable))
+	  {
+		palloc_free_page(kpage);
+		return false;
+	  }
+  /**pj4******************************************************/
+	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+	  spte->va = upage;
+	  spte->writable = writable;
+	  spte->file = file;
+	  spte->ofs = ofs;
+	  spte->read_bytes = page_read_bytes;
+	  spte->zero_bytes = page_zero_bytes;
+	  insert_spte(&thread_current()->spt, spte);
+  /***********************************************************/
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -573,6 +579,13 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+
+  /**pj4******************************************************/
+  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+  spte->va = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  spte->writable = 1;
+  insert_spte(&thread_current()->spt, spte);
+  /***********************************************************/
   return success;
 }
 
@@ -585,7 +598,7 @@ setup_stack (void **esp)
    with palloc_get_page().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
@@ -613,4 +626,15 @@ struct thread *find_thread(int child_tid){
   }
   return 0;
 }
+bool load_file(void *kpage, struct spt_entry *spte){
+  file_seek(spte->file, spte->ofs);
+  int a = file_read(spte->file, kpage, spte->read_bytes);
+  if(a != (int)spte->read_bytes)
+	return false;
+  printf("bbb\n");
+  memset(kpage + spte->read_bytes, 0, spte->zero_bytes);
+  return true;
+}
+
+
 /***********************************************************/

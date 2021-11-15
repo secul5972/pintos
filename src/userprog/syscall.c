@@ -1,14 +1,18 @@
-#include "userprog/syscall.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
-#include "threads/thread.h"
 #include "pagedir.h"
 #include "threads/vaddr.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "vm/page.h"
+#include "threads/thread.h"
+#include "userprog/syscall.h"
+#include "devices/shutdown.h"
+#include "devices/input.h"
+#include "userprog/process.h"
 
-struct lock f_lock;
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -20,11 +24,19 @@ syscall_init (void)
 
 /**pj1****************************************************/
 //check is in user address area
-void chk_addr_area(const void *addr, int offset, int end){
-  for(int i = offset; i <= end; i += 4){
+void chk_addr_area(const void *addr, int offset, int end, int writable, int bytes){
+  for(int i = offset; i <= end; i += bytes){
 	//check address area
-	if(!is_user_vaddr(addr + i)|| !pagedir_get_page(thread_current()->pagedir, addr + i))
+	if(!addr || !is_user_vaddr(addr + i)){ 
 	  sys_exit(-1);
+	}
+	/**pj4***************************************************/
+	struct spt_entry *spte = find_spt_entry(addr + i);
+/*	if(!spte || (writable && !spte->writable)){
+	  printf("%p, %d\n", spte, writable);
+	  sys_exit(-1);
+	}*/
+	/********************************************************/
   }
 }
 
@@ -49,7 +61,7 @@ tid_t sys_exec(const char *cmd_line){
   char exec_name[30];
   int i = 0;
  
-  chk_addr_area(cmd_line, 0, 0);
+  chk_addr_area(cmd_line, 0, 0, 0, 4);
   //parsing for print
   while (cmd_line[i] && cmd_line[i] != ' '){
 	exec_name[i] = cmd_line[i];
@@ -72,7 +84,7 @@ int sys_wait(tid_t pid){
 }
 
 int sys_read(int fd, void *buffer, unsigned size){
-  chk_addr_area(buffer, 0, 0);
+  chk_addr_area(buffer, 0, (size - 1), 1, 1);
   struct thread *t = thread_current();
   int i = 0;
   if(fd == 0){
@@ -95,7 +107,7 @@ int sys_read(int fd, void *buffer, unsigned size){
 }
 
 int sys_write(int fd, const void *buffer, unsigned size){
-  chk_addr_area(buffer, 0, 0);
+  chk_addr_area(buffer, 0, (size - 1) * 4, 0, 1);
   struct thread *t = thread_current();
   if(fd == 1){
 	lock_acquire(&f_lock);
@@ -135,7 +147,7 @@ int max_of_four_int(int a, int b, int c, int d){
 }
 /**pj2****************************************************/
 bool sys_create(const char *file, unsigned initial_size){
-	chk_addr_area(file, 0, 0);
+	chk_addr_area(file, 0, 0, 0, 4);
 	lock_acquire(&f_lock);
 	int ret = filesys_create(file, initial_size);
 	lock_release(&f_lock);
@@ -143,7 +155,7 @@ bool sys_create(const char *file, unsigned initial_size){
 }
 
 bool sys_remove(const char *file){
-  chk_addr_area(file, 0, 0);
+  chk_addr_area(file, 0, 0, 0, 4);
   lock_acquire(&f_lock);
   int ret = filesys_remove(file);
   lock_release(&f_lock);
@@ -151,7 +163,7 @@ bool sys_remove(const char *file){
 }
 
 int sys_open(const char *file){
-  chk_addr_area(file ,0, 0);
+  chk_addr_area(file ,0, 0, 0, 4);
   struct thread *t = thread_current();
   lock_acquire(&f_lock);
   struct file *f = filesys_open(file);
@@ -202,7 +214,7 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   int sys_num;
-  chk_addr_area(f->esp, 0, 0);
+  chk_addr_area(f->esp, 0, 0, 0, 4);
   sys_num = *(uint32_t *)f->esp;
  
   //first check addr, second call system_call function
@@ -211,59 +223,59 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  sys_halt();
 	  break;
 	case SYS_EXIT:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  sys_exit(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_EXEC:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = sys_exec((char *)*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_WAIT:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = sys_wait(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_READ:
-	  chk_addr_area(f->esp, 4, 12);
+	  chk_addr_area(f->esp, 4, 12, 0, 4);
 	  f->eax = sys_read(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
 	  break;
 	case SYS_WRITE:
-	  chk_addr_area(f->esp, 4, 12);
+	  chk_addr_area(f->esp, 4, 12, 0, 4);
 	  f->eax = sys_write(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
 	  break;
 	case SYS_FIBO:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = fibonacci(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_MAX_FOUR:
-	  chk_addr_area(f->esp, 4, 16);
+	  chk_addr_area(f->esp, 4, 16, 0, 4);
 	  f->eax = max_of_four_int(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12), *(uint32_t *)(f->esp + 16));
 	  break;
 	case SYS_CREATE:
-	  chk_addr_area(f->esp, 4, 8);
+	  chk_addr_area(f->esp, 4, 8, 0, 4);
 	  f->eax = sys_create((char *)*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
 	  break;
 	case SYS_REMOVE:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = sys_remove((char *)*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_OPEN:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = sys_open((char *)*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_CLOSE:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  sys_close(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_FILESIZE:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = sys_filesize(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_SEEK:
-	  chk_addr_area(f->esp, 4, 8);
+	  chk_addr_area(f->esp, 4, 8, 0, 4);
 	  sys_seek(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
 	  break;
 	case SYS_TELL:
-	  chk_addr_area(f->esp, 4, 4);
+	  chk_addr_area(f->esp, 4, 4, 0, 4);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
 	  break;
   }
