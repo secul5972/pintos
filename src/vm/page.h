@@ -6,28 +6,29 @@
 #define VM_ANON 2
 
 #include <hash.h>
+#include <stdbool.h>
 
 struct spt_entry{
-  uint8_t type;
-  void *va;
-  bool writable;
-  
-  bool is_loaded;
-  struct file* file;
+  void *vpn;
+  void *pfn;
 
-  size_t ofs;
-  size_t read_bytes;
-  size_t zero_bytes;
+  bool writable;
+  bool pinned;
+
+  int32_t swap_idx;
 
   struct hash_elem h_elem;
+  struct thread *t;
 };
 
-void spt_init(void);
+void *swap_page;
+
+void spt_init(struct hash *spt);
 bool insert_spte(struct hash *spt, struct spt_entry *spte);
 bool delete_spte(struct hash *spt, struct spt_entry *spte);
 struct spt_entry *find_spt_entry(void *va);
 void spte_free(struct hash_elem *he, void *aux);
-bool load_file(void *kpage, struct spt_entry *spte);
-bool fault_handler(struct spt_entry *spte);
 void spt_destroy(struct hash *spt);
+bool page_evict();
+
 #endif

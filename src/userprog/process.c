@@ -75,7 +75,7 @@ start_process (void *file_name_)
   bool success;
 
   /**pj4**************************************************/
-  spt_init();
+  spt_init(&thread_current()->spt);
   /*******************************************************/
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -529,30 +529,34 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 	  
 	  uint8_t *kpage = palloc_get_page(PAL_USER);
-	  if(kpage == NULL)
-		false;
+	  if(kpage == NULL){
+		kpage = swap_page;
+	  }
 	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
 	  {
 		palloc_free_page(kpage);
 		return false;
 	  }
 	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
-	  if(!install_page(upage, kpage, writable))
-	  {
-		palloc_free_page(kpage);
-		return false;
+	  if(kpage != swap_page){
+		if(!install_page(upage, kpage, writable))
+		{
+		  palloc_free_page(kpage);
+		  return false;
+		}
 	  }
   /**pj4******************************************************/
 	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-	  spte->va = pg_round_down(upage);
+	  spte->vpn = pg_round_down(spte->vpn = upage);
 	  spte->writable = writable;
-	  spte->is_loaded = 0;
-	  spte->file = file;
-	  spte->ofs = ofs;
-	  spte->read_bytes = page_read_bytes;
-	  spte->zero_bytes = page_zero_bytes;
+	  spte->pinned = 0;
+	  spte->pfn = pg_round_down(kpage);
+	  spte->t = thread_current();
+	  if(kpage == swap_page)
+		spte->swap_idx = swap_out(kpage);
+	  else spte->swap_idx = -1;
 	  if(!insert_spte(&thread_current()->spt, spte)){
+		palloc_free_page(kpage);
 		free(spte);
 		return false;
 	  }
@@ -561,7 +565,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
-	  ofs += page_read_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -575,24 +578,26 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
+    /**pj4******************************************************/
+  while(!(kpage = palloc_get_page (PAL_USER | PAL_ZERO)))
+	page_evict();
 
-  /**pj4******************************************************/
+  success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+  if (success)
+	*esp = PHYS_BASE;
+  else
+	palloc_free_page (kpage);
+  
   struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-  spte->va =pg_round_down( ((uint8_t *) PHYS_BASE) - PGSIZE);
+  spte->vpn = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
   spte->writable = 1;
-  spte->is_loaded = 1;
+  spte->pinned = 0;
+  spte->swap_idx = -1;
+  spte->t = thread_current();
+  spte->pfn = pg_round_down(kpage);
   if(!insert_spte(&thread_current()->spt, spte)){
-	free(spte);
 	palloc_free_page(kpage);
+	free(spte);
 	success = false;
   }
   /***********************************************************/
@@ -636,4 +641,5 @@ struct thread *find_thread(int child_tid){
   }
   return 0;
 }
+
 /***********************************************************/
