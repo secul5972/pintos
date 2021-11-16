@@ -155,22 +155,48 @@ page_fault (struct intr_frame *f)
   if(!fault_addr || is_kernel_vaddr(fault_addr) || (user && is_kernel_vaddr(f->esp)))
 	sys_exit(-1);
 
-  struct spt_entry *spte = find_spt_entry(fault_addr);
-  if(spte && !spte->writable && write){
+/*  if(spte && !spte->writable && write){
 	if(lock_held_by_current_thread(&f_lock))
 	  lock_release(&f_lock);
 	sys_exit(-1);
-  }
+  }*/
   if(not_present){
-	if(!spte){
-	  if(lock_held_by_current_thread(&f_lock))
-	    lock_release(&f_lock);
-	  sys_exit(-1);
+	struct spt_entry *spte = find_spt_entry(fault_addr);
+	if(spte){
+	  void *kpage = 0;
+	  while(!(kpage = palloc_get_page(PAL_USER)))
+		page_evict();
+	  swap_in(spte->vpn);
+	  if(!install_page(spte->vpn, kpage, spte->writable)){
+		palloc_free_page(kpage);
+		sys_exit(-1);
+	  }
 	}
-	swap_in(spte->vpn);
-	return ;
+	else if(fault_addr >= f->esp - 32){
+	  void *vpn = pg_round_down(fault_addr);
+	  if(vpn >= PHYS_BASE - 8 * 1024 * 1024){
+		void *kpage = 0;
+		struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+		while(!(kpage = palloc_get_page(PAL_USER)))
+		  page_evict();
+		spte->vpn = vpn;
+		spte->writable = 1;
+		spte->pinned = 1;
+		spte->t = thread_current();
+		spte->swap_idx = -1;
+		if(!install_page(spte->vpn, kpage, 1) || !insert_spte(&thread_current()->spt, spte)){
+		  palloc_free_page(kpage);
+		  free(spte);
+		  sys_exit(-1);
+		}
+		return;
+	  }
+	}
   }
-  /*********************************************************/
+  if(lock_held_by_current_thread(&f_lock))
+    lock_release(&f_lock);
   sys_exit(-1);
+
+  /*********************************************************/
 }
 
