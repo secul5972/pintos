@@ -27,7 +27,7 @@ syscall_init (void)
 void chk_addr_area(const void *addr, int offset, int end, int writable, int bytes){
   for(int i = offset; i <= end; i += bytes){
 	//check address area
-	if(!addr || !is_user_vaddr(addr + i)){ 
+	if(!addr || !is_user_vaddr(addr + i)){
 	  sys_exit(-1);
 	}
 	/**pj4***************************************************/

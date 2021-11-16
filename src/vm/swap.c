@@ -27,7 +27,7 @@ uint32_t swap_out(void *pfn){
 }
 
 void swap_in(void *vpn){
-  void *kpage;
+  void *kpage = 0;
   struct spt_entry *spte;
 
   while(!(kpage = palloc_get_page(PAL_USER))){

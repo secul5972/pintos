@@ -161,42 +161,14 @@ page_fault (struct intr_frame *f)
 	  lock_release(&f_lock);
 	sys_exit(-1);
   }
-
   if(not_present){
-	if(PHYS_BASE - (uint32_t)fault_addr < 8 * 1024 * 1024){
-	  if(!write){
-		swap_in(spte->vpn);
-		return ;
-	  }
-	  uint32_t vpn = pg_round_down(fault_addr);
-	  uint32_t page_cnt = (uint32_t)(PHYS_BASE - (uint32_t)vpn) / (4 * 1024);
-	  for(int i=0;i<page_cnt;i++){
-		if(!(spte = find_spt_entry(vpn))){
-		  void *kpage;
-		  while(!(kpage = palloc_get_page(PAL_USER)))
-			  page_evict();
-		  memset (kpage, 0, PGSIZE);
-		  spte->vpn = vpn;
-		  spte->writable = 1;
-		  spte->pinned = 0;
-		  spte->swap_idx = -1;
-		  spte->t = thread_current();
-		  spte->pfn = pg_round_down(kpage);
-		  insert_spte(&spte->t->spt, &spte->h_elem);
-		  pagedir_set_page(spte->t->pagedir, vpn, kpage, 1);
-		}
-		else if(spte->swap_idx != -1)
-		  swap_in(vpn);
-		vpn += (4 * 1024);
-	  }
-	  return ;
+	if(!spte){
+	  if(lock_held_by_current_thread(&f_lock))
+	    lock_release(&f_lock);
+	  sys_exit(-1);
 	}
-	else{
-	  if(!spte)
-		sys_exit(-1);
-	  swap_in(spte->vpn);
-	  return ;
-	}
+	swap_in(spte->vpn);
+	return ;
   }
   /*********************************************************/
   sys_exit(-1);
