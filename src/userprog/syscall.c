@@ -12,6 +12,7 @@
 #include "devices/shutdown.h"
 #include "devices/input.h"
 #include "userprog/process.h"
+#include "threads/palloc.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -30,15 +31,29 @@ void chk_addr_area(const void *addr, int offset, int end, int writable, int byte
 	if(!addr || !is_user_vaddr(addr + i)){
 	  sys_exit(-1);
 	}
-	/**pj4***************************************************/
-	struct spt_entry *spte = find_spt_entry(addr + i);
-/*	if(!spte || (writable && !spte->writable)){
-	  printf("%p, %d\n", spte, writable);
-	  sys_exit(-1);
-	}*/
-	/********************************************************/
   }
 }
+
+/**pj4***************************************************/
+void chk_buffer_area(const void *buffer, unsigned size){
+  void *s_vpn = pg_round_down(buffer);
+  void *e_vpn = pg_round_down(buffer + size) + PGSIZE;
+  for(;s_vpn != e_vpn; s_vpn += PGSIZE){
+    struct spt_entry *spte = find_spt_entry(s_vpn);
+	if(!spte && spte->swap_idx != -1){
+	  void *kpage = 0;
+	  while(!(kpage = palloc_get_page(PAL_USER)))
+		page_evict();
+	  swap_in(spte->vpn, kpage);
+	  if(!install_page(spte->vpn, kpage, spte->writable)){
+		palloc_free_page(kpage);
+		sys_exit(-1);
+	  }
+	  spte->pinned = 1;
+	}
+  }
+}
+/********************************************************/
 
 void sys_halt(void){
   shutdown_power_off();
@@ -84,7 +99,7 @@ int sys_wait(tid_t pid){
 }
 
 int sys_read(int fd, void *buffer, unsigned size){
-  chk_addr_area(buffer, 0, (size - 1), 1, 1);
+  chk_buffer_area(buffer, size);
   struct thread *t = thread_current();
   int i = 0;
   if(fd == 0){
@@ -107,7 +122,7 @@ int sys_read(int fd, void *buffer, unsigned size){
 }
 
 int sys_write(int fd, const void *buffer, unsigned size){
-  chk_addr_area(buffer, 0, (size - 1) * 4, 0, 1);
+  chk_buffer_area(buffer, size);
   struct thread *t = thread_current();
   if(fd == 1){
 	lock_acquire(&f_lock);

@@ -62,7 +62,7 @@ bool page_evict(){
 		if(thread_ticks % 3 == 0)
 		  continue;
 		spte->swap_idx = swap_out(spte->pfn);
-		pagedir_clear_page(spte->t->pagedir, spte->pfn);
+		pagedir_clear_page(spte->t->pagedir, spte->vpn);
 		palloc_free_page(spte->pfn);
 		spte->pfn = 0;
 		return true;

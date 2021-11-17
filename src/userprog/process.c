@@ -528,10 +528,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 	  
-	  uint8_t *kpage = palloc_get_page(PAL_USER);
-	  if(kpage == NULL){
-		kpage = swap_page;
-	  }
+	  uint8_t *kpage;
+	  while(!(kpage = palloc_get_page (PAL_USER | PAL_ZERO)))
+		page_evict();
 	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
 	  {
 		palloc_free_page(kpage);
@@ -591,7 +590,7 @@ setup_stack (void **esp)
   struct spt_entry *spte = malloc(sizeof(struct spt_entry));
   spte->vpn = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
   spte->writable = 1;
-  spte->pinned = 0;
+  spte->pinned = 1;
   spte->swap_idx = -1;
   spte->t = thread_current();
   spte->pfn = pg_round_down(kpage);

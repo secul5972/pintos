@@ -147,7 +147,6 @@ pagedir_clear_page (uint32_t *pd, void *upage)
 
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (is_user_vaddr (upage));
-
   pte = lookup_page (pd, upage, false);
   if (pte != NULL && (*pte & PTE_P) != 0)
     {

@@ -164,13 +164,15 @@ page_fault (struct intr_frame *f)
 	struct spt_entry *spte = find_spt_entry(fault_addr);
 	if(spte){
 	  void *kpage = 0;
-	  while(!(kpage = palloc_get_page(PAL_USER)))
+	  while(!(kpage = palloc_get_page(PAL_USER))){
 		page_evict();
-	  swap_in(spte->vpn);
+	  }
+	  swap_in(spte->vpn, kpage);
 	  if(!install_page(spte->vpn, kpage, spte->writable)){
 		palloc_free_page(kpage);
 		sys_exit(-1);
 	  }
+	  return ;
 	}
 	else if(fault_addr >= f->esp - 32){
 	  void *vpn = pg_round_down(fault_addr);
