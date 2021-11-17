@@ -528,32 +528,32 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 	  
+  /**pj4****************************************************/
 	  uint8_t *kpage;
 	  while(!(kpage = palloc_get_page (PAL_USER | PAL_ZERO)))
 		page_evict();
+  /*********************************************************/
+
 	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-	  {
+		{
 		palloc_free_page(kpage);
 		return false;
-	  }
+		}
 	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
-	  if(kpage != swap_page){
-		if(!install_page(upage, kpage, writable))
+	  if(!install_page(upage, kpage, writable))
 		{
 		  palloc_free_page(kpage);
 		  return false;
 		}
-	  }
   /**pj4******************************************************/
 	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-	  spte->vpn = pg_round_down(spte->vpn = upage);
+	  spte->vpn = pg_round_down(upage);
 	  spte->writable = writable;
 	  spte->pinned = 0;
 	  spte->pfn = pg_round_down(kpage);
 	  spte->t = thread_current();
-	  if(kpage == swap_page)
-		spte->swap_idx = swap_out(kpage);
-	  else spte->swap_idx = -1;
+	  spte->swap_idx = -1;
+
 	  if(!insert_spte(&thread_current()->spt, spte)){
 		palloc_free_page(kpage);
 		free(spte);
@@ -577,29 +577,32 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-    /**pj4******************************************************/
+  /**pj4*****************************************************/
   while(!(kpage = palloc_get_page (PAL_USER | PAL_ZERO)))
 	page_evict();
 
   success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-  if (success)
+  if (success){
 	*esp = PHYS_BASE;
+	struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+
+	spte->vpn = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
+	spte->writable = 1;
+	spte->pinned = 1;
+	spte->swap_idx = -1;
+	spte->t = thread_current();
+	spte->pfn = pg_round_down(kpage);
+
+	if(!insert_spte(&thread_current()->spt, spte)){
+	  palloc_free_page(kpage);
+	  free(spte);
+	  success = false;
+	}
+  }
   else
 	palloc_free_page (kpage);
   
-  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-  spte->vpn = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
-  spte->writable = 1;
-  spte->pinned = 1;
-  spte->swap_idx = -1;
-  spte->t = thread_current();
-  spte->pfn = pg_round_down(kpage);
-  if(!insert_spte(&thread_current()->spt, spte)){
-	palloc_free_page(kpage);
-	free(spte);
-	success = false;
-  }
-  /***********************************************************/
+  /**********************************************************/
   return success;
 }
 

@@ -19,7 +19,6 @@ static bool spt_less_func(const struct hash_elem *he1, const struct hash_elem *h
 
 void spt_init(struct hash *spt){
   hash_init(spt, spt_hash_func, spt_less_func, 0);
-  swap_page = palloc_get_page(PAL_USER);
 }
 
 bool insert_spte(struct hash *spt, struct spt_entry *spte){
@@ -59,12 +58,13 @@ bool page_evict(){
 	while(hash_next(&i)){
 	  spte = hash_entry(hash_cur(&i), struct spt_entry, h_elem);
 	  if(!spte->pinned && spte->pfn){
-		if(thread_ticks % 3 == 0)
+		if(thread_ticks % 7 == 0)
 		  continue;
 		spte->swap_idx = swap_out(spte->pfn);
 		pagedir_clear_page(spte->t->pagedir, spte->vpn);
 		palloc_free_page(spte->pfn);
 		spte->pfn = 0;
+		spte->t = 0;
 		return true;
 	  }
 	}

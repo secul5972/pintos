@@ -21,8 +21,6 @@ struct spt_entry{
   struct thread *t;
 };
 
-void *swap_page;
-
 void spt_init(struct hash *spt);
 bool insert_spte(struct hash *spt, struct spt_entry *spte);
 bool delete_spte(struct hash *spt, struct spt_entry *spte);

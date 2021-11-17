@@ -25,21 +25,13 @@ syscall_init (void)
 
 /**pj1****************************************************/
 //check is in user address area
-void chk_addr_area(const void *addr, int offset, int end, int writable, int bytes){
+void chk_addr_area(const void *addr, int offset, int end, int bytes){
   for(int i = offset; i <= end; i += bytes){
 	//check address area
-	if(!addr || !is_user_vaddr(addr + i)){
+	if(!(addr + i) || !is_user_vaddr(addr + i)){
 	  sys_exit(-1);
 	}
-  }
-}
-
-/**pj4***************************************************/
-void chk_buffer_area(const void *buffer, unsigned size){
-  void *s_vpn = pg_round_down(buffer);
-  void *e_vpn = pg_round_down(buffer + size) + PGSIZE;
-  for(;s_vpn != e_vpn; s_vpn += PGSIZE){
-    struct spt_entry *spte = find_spt_entry(s_vpn);
+	struct spt_entry *spte = find_spt_entry(addr + i);
 	if(!spte && spte->swap_idx != -1){
 	  void *kpage = 0;
 	  while(!(kpage = palloc_get_page(PAL_USER)))
@@ -50,6 +42,65 @@ void chk_buffer_area(const void *buffer, unsigned size){
 		sys_exit(-1);
 	  }
 	  spte->pinned = 1;
+	}
+  }
+}
+
+/**pj4***************************************************/
+void chk_file_name(const void *addr){
+  if(!addr || !is_user_vaddr(addr)){
+    sys_exit(-1);
+  }
+  struct spt_entry *spte = find_spt_entry(addr);
+  if(!spte && spte->swap_idx != -1){
+    void *kpage = 0;
+    while(!(kpage = palloc_get_page(PAL_USER)))
+	  page_evict();
+    swap_in(spte->vpn, kpage);
+    if(!install_page(spte->vpn, kpage, spte->writable)){
+	  palloc_free_page(kpage);
+	  sys_exit(-1);
+	}
+	spte->pinned = 1;
+  }
+}
+
+void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
+  void *s_vpn = pg_round_down(buffer);
+  void *e_vpn = pg_round_down(buffer + size + PGSIZE);
+  for(; s_vpn != e_vpn; s_vpn += PGSIZE){
+	struct spt_entry *spte = find_spt_entry(s_vpn);
+	if(!spte && spte->swap_idx != -1){
+	  void *kpage = 0;
+	  while(!(kpage = palloc_get_page(PAL_USER)))
+		page_evict();
+	  swap_in(spte->vpn, kpage);
+	  if(!install_page(spte->vpn, kpage, spte->writable)){
+		palloc_free_page(kpage);
+		sys_exit(-1);
+	  }
+	  spte->pinned = 1;
+	}
+	else if(!esp && s_vpn >= esp - 32){
+	  void *vpn = pg_round_down(s_vpn);
+	  if(vpn >= PHYS_BASE - 8 * 1024 * 1024){
+		void *kpage = 0;
+		struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+		while(!(kpage = palloc_get_page(PAL_USER)))
+		  page_evict();
+
+		spte->vpn = vpn;
+		spte->writable = 1;
+		spte->pinned = 1;
+		spte->t = thread_current();
+		spte->swap_idx = -1;
+
+		if(!install_page(spte->vpn, kpage, 1) || !insert_spte(&thread_current()->spt, spte)){
+		  palloc_free_page(kpage);
+		  free(spte);
+		  sys_exit(-1);
+		}
+	  }
 	}
   }
 }
@@ -76,7 +127,7 @@ tid_t sys_exec(const char *cmd_line){
   char exec_name[30];
   int i = 0;
  
-  chk_addr_area(cmd_line, 0, 0, 0, 4);
+  chk_file_name(cmd_line);
   //parsing for print
   while (cmd_line[i] && cmd_line[i] != ' '){
 	exec_name[i] = cmd_line[i];
@@ -98,8 +149,8 @@ int sys_wait(tid_t pid){
   return process_wait(pid);
 }
 
-int sys_read(int fd, void *buffer, unsigned size){
-  chk_buffer_area(buffer, size);
+int sys_read(int fd, void *buffer, unsigned size, void *esp){
+  chk_buffer_area(buffer, size, esp);
   struct thread *t = thread_current();
   int i = 0;
   if(fd == 0){
@@ -121,8 +172,8 @@ int sys_read(int fd, void *buffer, unsigned size){
   return -1;
 }
 
-int sys_write(int fd, const void *buffer, unsigned size){
-  chk_buffer_area(buffer, size);
+int sys_write(int fd, const void *buffer, unsigned size, void *esp){
+  chk_buffer_area(buffer, size, esp);
   struct thread *t = thread_current();
   if(fd == 1){
 	lock_acquire(&f_lock);
@@ -162,7 +213,7 @@ int max_of_four_int(int a, int b, int c, int d){
 }
 /**pj2****************************************************/
 bool sys_create(const char *file, unsigned initial_size){
-	chk_addr_area(file, 0, 0, 0, 4);
+	chk_file_name(file);
 	lock_acquire(&f_lock);
 	int ret = filesys_create(file, initial_size);
 	lock_release(&f_lock);
@@ -170,7 +221,7 @@ bool sys_create(const char *file, unsigned initial_size){
 }
 
 bool sys_remove(const char *file){
-  chk_addr_area(file, 0, 0, 0, 4);
+  chk_file_name(file);
   lock_acquire(&f_lock);
   int ret = filesys_remove(file);
   lock_release(&f_lock);
@@ -178,7 +229,7 @@ bool sys_remove(const char *file){
 }
 
 int sys_open(const char *file){
-  chk_addr_area(file ,0, 0, 0, 4);
+  chk_file_name(file);
   struct thread *t = thread_current();
   lock_acquire(&f_lock);
   struct file *f = filesys_open(file);
@@ -229,7 +280,7 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   int sys_num;
-  chk_addr_area(f->esp, 0, 0, 0, 4);
+  chk_addr_area(f->esp, 0, 0, 4);
   sys_num = *(uint32_t *)f->esp;
  
   //first check addr, second call system_call function
@@ -238,59 +289,59 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  sys_halt();
 	  break;
 	case SYS_EXIT:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  sys_exit(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_EXEC:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_exec((char *)*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_WAIT:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_wait(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_READ:
-	  chk_addr_area(f->esp, 4, 12, 0, 4);
-	  f->eax = sys_read(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
+	  chk_addr_area(f->esp, 4, 12, 4);
+	  f->eax = sys_read(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12), *(uint32_t *)f->esp);
 	  break;
 	case SYS_WRITE:
-	  chk_addr_area(f->esp, 4, 12, 0, 4);
-	  f->eax = sys_write(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
+	  chk_addr_area(f->esp, 4, 12, 4);
+	  f->eax = sys_write(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12), *(uint32_t *)f->esp);
 	  break;
 	case SYS_FIBO:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = fibonacci(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_MAX_FOUR:
-	  chk_addr_area(f->esp, 4, 16, 0, 4);
+	  chk_addr_area(f->esp, 4, 16, 4);
 	  f->eax = max_of_four_int(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12), *(uint32_t *)(f->esp + 16));
 	  break;
 	case SYS_CREATE:
-	  chk_addr_area(f->esp, 4, 8, 0, 4);
+	  chk_addr_area(f->esp, 4, 8, 4);
 	  f->eax = sys_create((char *)*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
 	  break;
 	case SYS_REMOVE:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_remove((char *)*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_OPEN:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_open((char *)*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_CLOSE:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  sys_close(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_FILESIZE:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_filesize(*(uint32_t *)(f->esp + 4));
 	  break;
 	case SYS_SEEK:
-	  chk_addr_area(f->esp, 4, 8, 0, 4);
+	  chk_addr_area(f->esp, 4, 8, 4);
 	  sys_seek(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
 	  break;
 	case SYS_TELL:
-	  chk_addr_area(f->esp, 4, 4, 0, 4);
+	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
 	  break;
   }
