@@ -42,7 +42,15 @@ struct spt_entry *find_spt_entry(void *va){
 }
 
 void spte_free(struct hash_elem *he, void *aux UNUSED){
-  free(hash_entry(he, struct spt_entry, h_elem));
+  struct spt_entry *spte = hash_entry(he, struct spt_entry, h_elem);
+  struct thread *t = thread_current();
+  if(spte){
+	if(spte->swap_idx != -1)
+	  bitmap_flip(swap_check, spte->swap_idx);
+	palloc_free_page(pagedir_get_page(t->pagedir, spte->vpn));
+	pagedir_clear_page(t->pagedir, spte->vpn);
+	free(spte);
+  }
 }
 
 void spt_destroy(struct hash *spt){

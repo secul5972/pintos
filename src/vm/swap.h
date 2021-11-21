@@ -6,6 +6,8 @@
 #include "devices/block.h"
 #include "threads/synch.h"
 
+struct bitmap *swap_check;
+
 void swap_init();
 uint32_t swap_out(void *pfn);
 void swap_in(void *vpn, void *kpage);

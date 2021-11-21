@@ -153,8 +153,6 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   /**pj4****************************************************/
-  if(!fault_addr || is_kernel_vaddr(fault_addr) || (user && is_kernel_vaddr(f->esp)))
-	sys_exit(-1);
 
   if(not_present){
 	struct spt_entry *spte = find_spt_entry(fault_addr);

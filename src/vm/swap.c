@@ -6,7 +6,6 @@
 
 static struct block *swap_disk;
 static struct lock s_lock;
-static struct bitmap *swap_check;
 
 void swap_init(){
   swap_disk = block_get_role(BLOCK_SWAP);
