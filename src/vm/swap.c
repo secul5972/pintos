@@ -36,3 +36,9 @@ void swap_in(void *vpn, void *kpage){
   spte->t = thread_current();
   lock_release(&s_lock);
 }
+
+void clear_block(int idx){
+  lock_acquire(&s_lock);
+  bitmap_flip(swap_check, idx);
+  lock_release(&s_lock);
+}

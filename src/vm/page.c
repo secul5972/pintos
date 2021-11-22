@@ -33,7 +33,6 @@ struct spt_entry *find_spt_entry(void *va){
   struct spt_entry spte;
   struct hash_elem *he;
 
-  //get page number
   spte.vpn = pg_round_down(va);
   if(!(he = hash_find(&thread_current()->spt, &spte.h_elem))){
 	return 0;

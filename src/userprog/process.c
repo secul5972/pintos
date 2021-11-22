@@ -76,6 +76,7 @@ start_process (void *file_name_)
 
   /**pj4**************************************************/
   spt_init(&thread_current()->spt);
+  list_init(&thread_current()->m_list);
   /*******************************************************/
 
   /* Initialize interrupt frame and load executable. */
@@ -559,6 +560,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	  spte->pfn = pg_round_down(kpage);
 	  spte->t = thread_current();
 	  spte->swap_idx = -1;
+	  spte->mapid = -1;
 
 	  if(!insert_spte(&thread_current()->spt, spte)){
 		palloc_free_page(kpage);
@@ -598,6 +600,7 @@ setup_stack (void **esp)
 	spte->swap_idx = -1;
 	spte->t = thread_current();
 	spte->pfn = pg_round_down(kpage);
+	spte->mapid = -1;
 
 	if(!insert_spte(&thread_current()->spt, spte)){
 	  palloc_free_page(kpage);

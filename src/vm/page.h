@@ -16,9 +16,14 @@ struct spt_entry{
   bool pinned;
 
   int32_t swap_idx;
+  int32_t mapid;
+  int32_t ofs;
+  int32_t read_bytes;
 
   struct hash_elem h_elem;
+  struct list_elem m_elem;
   struct thread *t;
+  struct file *file;
 };
 
 void spt_init(struct hash *spt);

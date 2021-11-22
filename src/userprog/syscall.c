@@ -32,7 +32,8 @@ void chk_addr_area(const void *addr, int offset, int end, int bytes){
 	  sys_exit(-1);
 	}
 	struct spt_entry *spte = find_spt_entry(addr + i);
-	if(!spte && spte->swap_idx != -1){
+
+	if(spte && spte->swap_idx != -1){
 	  void *kpage = 0;
 	  while(!(kpage = palloc_get_page(PAL_USER)))
 		page_evict();
@@ -48,11 +49,14 @@ void chk_addr_area(const void *addr, int offset, int end, int bytes){
 
 /**pj4***************************************************/
 void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
+  if(!(buffer) || !is_user_vaddr(buffer)){
+	  sys_exit(-1);
+	}
   void *s_vpn = pg_round_down(buffer);
   void *e_vpn = pg_round_down(buffer + size + PGSIZE);
   for(; s_vpn != e_vpn; s_vpn += PGSIZE){
 	struct spt_entry *spte = find_spt_entry(s_vpn);
-	if(!spte && spte->swap_idx != -1){
+	if(spte && spte->swap_idx != -1){
 	  void *kpage = 0;
 	  while(!(kpage = palloc_get_page(PAL_USER)))
 		page_evict();
@@ -236,12 +240,16 @@ unsigned sys_tell(int fd){
   return ret;
 }
 /**pj4****************************************************/
-/*int sys_mmap(int fd, void *addr){
+int sys_mmap(int fd, void *addr){
   chk_addr_area(addr, 0, 0, 4);
-  struct file *file = file_reopen(process_get_file(fd));
-  uint32_t read_bytes;
-  uint32_t zero_bytes;
+  struct file *file = file_reopen(thread_current()->fd[fd]);
+  uint32_t read_bytes = file_length(file);
+  uint32_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
+  void *upage = addr;
+  int mapid = list_size(&thread_current()->m_list);
+  int32_t ofs = 0;
   
+  //file_seek(file, 0);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
@@ -257,19 +265,24 @@ unsigned sys_tell(int fd){
 		return false;
 		}
 	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
-	  if(!install_page(upage, kpage, writable))
+	  if(!install_page(upage, kpage, 1))
 		{
 		  palloc_free_page(kpage);
 		  return false;
 		}
 	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
 	  spte->vpn = pg_round_down(upage);
-	  spte->writable = writable;
+	  spte->writable = 1;
 	  spte->pinned = 0;
 	  spte->pfn = pg_round_down(kpage);
 	  spte->t = thread_current();
 	  spte->swap_idx = -1;
+	  spte->mapid = mapid;
+	  spte->file = file;
+	  spte->ofs = ofs;
+	  spte->read_bytes = page_read_bytes;
 
+	  list_push_back(&thread_current()->m_list, &spte->m_elem);
 	  if(!insert_spte(&thread_current()->spt, spte)){
 		palloc_free_page(kpage);
 		free(spte);
@@ -278,15 +291,47 @@ unsigned sys_tell(int fd){
 
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+	  ofs += page_read_bytes;
       upage += PGSIZE;
     }
-  return true;
+  return mapid;
 
 }
 
 void sys_munmap(mapid_t mapping){
+  struct thread *t = thread_current();
+  struct spt_entry *spte = 0;
+  struct list_elem *e_curr, *e_end;
 
-}*/
+  e_curr = list_begin(&t->m_list);
+  e_end = list_end(&t->m_list);
+  while(e_curr != e_end){
+    spte = list_entry(e_curr, struct spt_entry, m_elem);
+	if(!spte->mapid){
+	  if(spte->swap_idx != -1){
+	    void *kpage = 0;
+		while(!(kpage = palloc_get_page(PAL_USER)))
+		  page_evict();
+		
+		swap_in(spte->vpn, kpage);
+		if(!install_page(spte->vpn, kpage, spte->writable)){
+		  palloc_free_page(kpage);
+		  sys_exit(-1);
+		}
+		lock_acquire(&f_lock);
+		file_write_at(spte->file, spte->vpn, spte->read_bytes, spte->ofs);
+		lock_release(&f_lock);
+		delete_spte(&t->spt, spte);
+		pagedir_clear_page(spte->t->pagedir, spte->vpn);
+		palloc_free_page(spte->pfn);
+		free(spte);
+	  }
+	  e_curr = list_remove(e_curr);
+    }
+	else
+	  e_curr = list_next(e_curr);
+  }
+}
 /*********************************************************/
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
@@ -356,15 +401,13 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
 	  break;
-	 /* case SYS_SEEK:
+	case SYS_MMAP:
 	  chk_addr_area(f->esp, 4, 8, 4);
 	  f->eax = sys_mmap(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
 	  break;
-	case SYS_TELL:
+	case SYS_MUNMAP:
 	  chk_addr_area(f->esp, 4, 4, 4);
-	  f->eax = sys_munmap(*(uint32_t *)(f->esp + 4));
-	  break;
-*/
+	  sys_munmap(*(uint32_t *)(f->esp + 4));
   }
 }
 

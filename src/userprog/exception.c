@@ -182,6 +182,7 @@ page_fault (struct intr_frame *f)
 		spte->pinned = 0;
 		spte->t = thread_current();
 		spte->swap_idx = -1;
+		spte->mapid = -1;
 
 		if(!install_page(spte->vpn, kpage, 1) || !insert_spte(&thread_current()->spt, spte)){
 		  palloc_free_page(kpage);

@@ -23,7 +23,8 @@ int sys_filesize(int fd);
 void sys_seek(int fd, unsigned position);
 unsigned sys_tell(int fd);
 void chk_addr_area(const void *addr, int offset, int end, int bytes);
+/**pj4*******************************************************/
 void chk_buffer_area(const void *buffer, unsigned size, const void *esp);
-
-
+int sys_mmap(int fd, void *addr);
+/************************************************************/
 #endif /* userprog/syscall.h */
