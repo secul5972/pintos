@@ -57,24 +57,19 @@ void spt_destroy(struct hash *spt){
   hash_destroy(spt, spte_free);
 }
 
-bool page_evict(){
+void page_evict(){
   struct hash_iterator i;
   struct thread *t = thread_current();
   struct spt_entry *spte = 0;
-  while(1){
-	hash_first(&i, &t->spt);
-	while(hash_next(&i)){
-	  spte = hash_entry(hash_cur(&i), struct spt_entry, h_elem);
-	  if(!spte->pinned && spte->pfn){
-		if(thread_ticks % 7 == 0)
-		  continue;
-		spte->swap_idx = swap_out(spte->pfn);
-		pagedir_clear_page(spte->t->pagedir, spte->vpn);
-		palloc_free_page(spte->pfn);
-		spte->pfn = 0;
-		spte->t = 0;
-		return true;
-	  }
-	}
+  hash_first(&i, &t->spt);
+  while(hash_next(&i)){
+    spte = hash_entry(hash_cur(&i), struct spt_entry, h_elem);
+	if(!spte->pinned && spte->swap_idx == -1){
+	  spte->swap_idx = swap_out(spte->pfn);
+	  pagedir_clear_page(spte->t->pagedir, spte->vpn);
+	  palloc_free_page(spte->pfn);
+	  spte->pfn = 0;
+	  spte->t = 0;
+    }
   }
 }

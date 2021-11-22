@@ -27,6 +27,6 @@ bool delete_spte(struct hash *spt, struct spt_entry *spte);
 struct spt_entry *find_spt_entry(void *va);
 void spte_free(struct hash_elem *he, void *aux);
 void spt_destroy(struct hash *spt);
-bool page_evict();
+void page_evict();
 
 #endif

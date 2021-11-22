@@ -81,7 +81,7 @@ void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
 	  }
 	  spte->pinned = 1;
 	}
-	else if(!esp && s_vpn >= esp - 32){
+/*	else if(!esp && s_vpn >= esp - 32){
 	  void *vpn = pg_round_down(s_vpn);
 	  if(vpn >= PHYS_BASE - 8 * 1024 * 1024){
 		void *kpage = 0;
@@ -89,6 +89,7 @@ void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
 		while(!(kpage = palloc_get_page(PAL_USER)))
 		  page_evict();
 
+		spte->pfn = pg_round_down(kpage);
 		spte->vpn = vpn;
 		spte->writable = 1;
 		spte->pinned = 1;
@@ -101,7 +102,7 @@ void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
 		  sys_exit(-1);
 		}
 	  }
-	}
+	}*/
   }
 }
 /********************************************************/

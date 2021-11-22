@@ -176,10 +176,10 @@ page_fault (struct intr_frame *f)
 		while(!(kpage = palloc_get_page(PAL_USER)))
 		  page_evict();
 
-		spte->pfn = pg_round_down(fault_addr);
+		spte->pfn = pg_round_down(kpage);
 		spte->vpn = vpn;
 		spte->writable = 1;
-		spte->pinned = 1;
+		spte->pinned = 0;
 		spte->t = thread_current();
 		spte->swap_idx = -1;
 
