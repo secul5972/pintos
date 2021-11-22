@@ -47,24 +47,6 @@ void chk_addr_area(const void *addr, int offset, int end, int bytes){
 }
 
 /**pj4***************************************************/
-void chk_file_name(const void *addr){
-  if(!addr || !is_user_vaddr(addr)){
-    sys_exit(-1);
-  }
-  struct spt_entry *spte = find_spt_entry(addr);
-  if(!spte && spte->swap_idx != -1){
-    void *kpage = 0;
-    while(!(kpage = palloc_get_page(PAL_USER)))
-	  page_evict();
-    swap_in(spte->vpn, kpage);
-    if(!install_page(spte->vpn, kpage, spte->writable)){
-	  palloc_free_page(kpage);
-	  sys_exit(-1);
-	}
-	spte->pinned = 1;
-  }
-}
-
 void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
   void *s_vpn = pg_round_down(buffer);
   void *e_vpn = pg_round_down(buffer + size + PGSIZE);
@@ -81,28 +63,6 @@ void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
 	  }
 	  spte->pinned = 1;
 	}
-/*	else if(!esp && s_vpn >= esp - 32){
-	  void *vpn = pg_round_down(s_vpn);
-	  if(vpn >= PHYS_BASE - 8 * 1024 * 1024){
-		void *kpage = 0;
-		struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-		while(!(kpage = palloc_get_page(PAL_USER)))
-		  page_evict();
-
-		spte->pfn = pg_round_down(kpage);
-		spte->vpn = vpn;
-		spte->writable = 1;
-		spte->pinned = 1;
-		spte->t = thread_current();
-		spte->swap_idx = -1;
-
-		if(!install_page(spte->vpn, kpage, 1) || !insert_spte(&thread_current()->spt, spte)){
-		  palloc_free_page(kpage);
-		  free(spte);
-		  sys_exit(-1);
-		}
-	  }
-	}*/
   }
 }
 /********************************************************/
@@ -128,7 +88,7 @@ tid_t sys_exec(const char *cmd_line){
   char exec_name[30];
   int i = 0;
  
-  chk_file_name(cmd_line);
+  chk_addr_area(cmd_line, 0, 0, 4);
   //parsing for print
   while (cmd_line[i] && cmd_line[i] != ' '){
 	exec_name[i] = cmd_line[i];
@@ -214,15 +174,15 @@ int max_of_four_int(int a, int b, int c, int d){
 }
 /**pj2****************************************************/
 bool sys_create(const char *file, unsigned initial_size){
-	chk_file_name(file);
-	lock_acquire(&f_lock);
-	int ret = filesys_create(file, initial_size);
-	lock_release(&f_lock);
-	return ret;
+  chk_addr_area(file, 0, 0, 4);
+  lock_acquire(&f_lock);
+  int ret = filesys_create(file, initial_size);
+  lock_release(&f_lock);
+  return ret;
 }
 
 bool sys_remove(const char *file){
-  chk_file_name(file);
+  chk_addr_area(file, 0, 0, 4);
   lock_acquire(&f_lock);
   int ret = filesys_remove(file);
   lock_release(&f_lock);
@@ -230,7 +190,7 @@ bool sys_remove(const char *file){
 }
 
 int sys_open(const char *file){
-  chk_file_name(file);
+  chk_addr_area(file, 0, 0, 4);
   struct thread *t = thread_current();
   lock_acquire(&f_lock);
   struct file *f = filesys_open(file);
@@ -275,7 +235,58 @@ unsigned sys_tell(int fd){
   lock_release(&f_lock);
   return ret;
 }
+/**pj4****************************************************/
+/*int sys_mmap(int fd, void *addr){
+  chk_addr_area(addr, 0, 0, 4);
+  struct file *file = file_reopen(process_get_file(fd));
+  uint32_t read_bytes;
+  uint32_t zero_bytes;
+  
+  while (read_bytes > 0 || zero_bytes > 0) 
+    {
+      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
+	  
+	  uint8_t *kpage;
+	  while(!(kpage = palloc_get_page (PAL_USER | PAL_ZERO)))
+		page_evict();
 
+	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+		{
+		palloc_free_page(kpage);
+		return false;
+		}
+	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
+	  if(!install_page(upage, kpage, writable))
+		{
+		  palloc_free_page(kpage);
+		  return false;
+		}
+	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+	  spte->vpn = pg_round_down(upage);
+	  spte->writable = writable;
+	  spte->pinned = 0;
+	  spte->pfn = pg_round_down(kpage);
+	  spte->t = thread_current();
+	  spte->swap_idx = -1;
+
+	  if(!insert_spte(&thread_current()->spt, spte)){
+		palloc_free_page(kpage);
+		free(spte);
+		return false;
+	  }
+
+      read_bytes -= page_read_bytes;
+      zero_bytes -= page_zero_bytes;
+      upage += PGSIZE;
+    }
+  return true;
+
+}
+
+void sys_munmap(mapid_t mapping){
+
+}*/
 /*********************************************************/
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
@@ -345,6 +356,15 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
 	  break;
+	 /* case SYS_SEEK:
+	  chk_addr_area(f->esp, 4, 8, 4);
+	  f->eax = sys_mmap(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
+	  break;
+	case SYS_TELL:
+	  chk_addr_area(f->esp, 4, 4, 4);
+	  f->eax = sys_munmap(*(uint32_t *)(f->esp + 4));
+	  break;
+*/
   }
 }
 

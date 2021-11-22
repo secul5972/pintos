@@ -1,6 +1,8 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
+typedef int mapid_t;
+
 struct lock f_lock;
 
 void syscall_init (void);
@@ -20,7 +22,6 @@ void sys_close(int fd);
 int sys_filesize(int fd);
 void sys_seek(int fd, unsigned position);
 unsigned sys_tell(int fd);
-void chk_file_name(const void *addr);
 void chk_addr_area(const void *addr, int offset, int end, int bytes);
 void chk_buffer_area(const void *buffer, unsigned size, const void *esp);
 

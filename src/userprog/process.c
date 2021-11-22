@@ -77,6 +77,7 @@ start_process (void *file_name_)
   /**pj4**************************************************/
   spt_init(&thread_current()->spt);
   /*******************************************************/
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -143,7 +144,11 @@ process_exit (void)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+
+  /**pj4****************************************************/
   spt_destroy(&cur->spt);
+  /*********************************************************/
+
   pd = cur->pagedir;
   if (pd != NULL) 
     {
@@ -165,6 +170,7 @@ process_exit (void)
   //inserted for syn_read, syn_write
   //previous synchronization system can't pass syn_read, write
   sema_down(&cur->m_sema);
+/************************************************************/
 }
 
 /* Sets up the CPU for running user code in the current
@@ -588,7 +594,7 @@ setup_stack (void **esp)
 
 	spte->vpn = pg_round_down(((uint8_t *) PHYS_BASE) - PGSIZE);
 	spte->writable = 1;
-	spte->pinned = 1;
+	spte->pinned = 0;
 	spte->swap_idx = -1;
 	spte->t = thread_current();
 	spte->pfn = pg_round_down(kpage);
