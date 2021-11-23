@@ -8,6 +8,8 @@
 #include "userprog/syscall.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+#include "vm/swap.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -182,7 +184,6 @@ page_fault (struct intr_frame *f)
 		spte->pinned = 0;
 		spte->t = thread_current();
 		spte->swap_idx = -1;
-		spte->mapid = -1;
 
 		if(!install_page(spte->vpn, kpage, 1) || !insert_spte(&thread_current()->spt, spte)){
 		  palloc_free_page(kpage);

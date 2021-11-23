@@ -3,14 +3,15 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <bitmap.h>
 #include "devices/block.h"
 #include "threads/synch.h"
 
 struct bitmap *swap_check;
 
-void swap_init();
+void swap_init(void);
 uint32_t swap_out(void *pfn);
 void swap_in(void *vpn, void *kpage);
 void clear_block(int idx);
 
-#endif;
+#endif

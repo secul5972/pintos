@@ -13,6 +13,7 @@
 #include "devices/input.h"
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "vm/swap.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -48,7 +49,7 @@ void chk_addr_area(const void *addr, int offset, int end, int bytes){
 }
 
 /**pj4***************************************************/
-void chk_buffer_area(const void *buffer, unsigned size, const void *esp){
+void chk_buffer_area(const void *buffer, unsigned size){
   if(!(buffer) || !is_user_vaddr(buffer)){
 	  sys_exit(-1);
 	}
@@ -114,10 +115,10 @@ int sys_wait(tid_t pid){
   return process_wait(pid);
 }
 
-int sys_read(int fd, void *buffer, unsigned size, void *esp){
-  chk_buffer_area(buffer, size, esp);
+int sys_read(int fd, void *buffer, unsigned size){
+  chk_buffer_area(buffer, size);
   struct thread *t = thread_current();
-  int i = 0;
+  unsigned int i = 0;
   if(fd == 0){
 	//save one char by one
 	lock_acquire(&f_lock);
@@ -137,8 +138,8 @@ int sys_read(int fd, void *buffer, unsigned size, void *esp){
   return -1;
 }
 
-int sys_write(int fd, const void *buffer, unsigned size, void *esp){
-  chk_buffer_area(buffer, size, esp);
+int sys_write(int fd, const void *buffer, unsigned size){
+  chk_buffer_area(buffer, size);
   struct thread *t = thread_current();
   if(fd == 1){
 	lock_acquire(&f_lock);
@@ -240,16 +241,15 @@ unsigned sys_tell(int fd){
   return ret;
 }
 /**pj4****************************************************/
-int sys_mmap(int fd, void *addr){
-  chk_addr_area(addr, 0, 0, 4);
+/*int sys_mmap(int fd, void *addr){
   struct file *file = file_reopen(thread_current()->fd[fd]);
   uint32_t read_bytes = file_length(file);
-  uint32_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
+  //uint32_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
   void *upage = addr;
-  int mapid = list_size(&thread_current()->m_list);
   int32_t ofs = 0;
-  
-  //file_seek(file, 0);
+  thread_current()->mfd[fd] = addr;
+  thread_current()->msize[fd] = read_bytes;
+
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
@@ -261,8 +261,8 @@ int sys_mmap(int fd, void *addr){
 
 	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
 		{
-		palloc_free_page(kpage);
-		return false;
+		  palloc_free_page(kpage);
+		  return false;
 		}
 	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
 	  if(!install_page(upage, kpage, 1))
@@ -270,44 +270,41 @@ int sys_mmap(int fd, void *addr){
 		  palloc_free_page(kpage);
 		  return false;
 		}
+ 
 	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
 	  spte->vpn = pg_round_down(upage);
 	  spte->writable = 1;
-	  spte->pinned = 0;
+	  spte->pinned = 1;
 	  spte->pfn = pg_round_down(kpage);
 	  spte->t = thread_current();
 	  spte->swap_idx = -1;
-	  spte->mapid = mapid;
-	  spte->file = file;
-	  spte->ofs = ofs;
-	  spte->read_bytes = page_read_bytes;
+	  spte->mapid = fd;
+	 // spte->file = file;
+	 // spte->ofs = ofs;
+	 // spte->read_bytes = page_read_bytes;
 
-	  list_push_back(&thread_current()->m_list, &spte->m_elem);
 	  if(!insert_spte(&thread_current()->spt, spte)){
 		palloc_free_page(kpage);
 		free(spte);
-		return false;
+		return -1;
 	  }
 
       read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-	  ofs += page_read_bytes;
+      //zero_bytes -= page_zero_bytes;
+	 // ofs += page_read_bytes;
       upage += PGSIZE;
     }
-  return mapid;
-
+  return fd;
 }
 
 void sys_munmap(mapid_t mapping){
   struct thread *t = thread_current();
   struct spt_entry *spte = 0;
-  struct list_elem *e_curr, *e_end;
-
-  e_curr = list_begin(&t->m_list);
-  e_end = list_end(&t->m_list);
-  while(e_curr != e_end){
-    spte = list_entry(e_curr, struct spt_entry, m_elem);
-	if(!spte->mapid){
+  void *addr = t->mfd[mapping];
+  void *addr_end = addr + t->msize[mapping];
+  for(;addr <= addr_end; addr += PGSIZE){
+  	spte = find_spt_entry(addr);
+	if(spte->mapid == mapping || !mapping){
 	  if(spte->swap_idx != -1){
 	    void *kpage = 0;
 		while(!(kpage = palloc_get_page(PAL_USER)))
@@ -318,20 +315,18 @@ void sys_munmap(mapid_t mapping){
 		  palloc_free_page(kpage);
 		  sys_exit(-1);
 		}
-		lock_acquire(&f_lock);
-		file_write_at(spte->file, spte->vpn, spte->read_bytes, spte->ofs);
-		lock_release(&f_lock);
-		delete_spte(&t->spt, spte);
-		pagedir_clear_page(spte->t->pagedir, spte->vpn);
-		palloc_free_page(spte->pfn);
-		free(spte);
 	  }
-	  e_curr = list_remove(e_curr);
+
+	  delete_spte(&t->spt, spte);
+	  lock_acquire(&f_lock);
+	  file_write_at(spte->file, spte->vpn, spte->read_bytes, spte->ofs);
+	  lock_release(&f_lock);
+	  pagedir_clear_page(t->pagedir, spte->vpn);
+	  palloc_free_page(spte->pfn);
+	  free(spte);
     }
-	else
-	  e_curr = list_next(e_curr);
   }
-}
+}*/
 /*********************************************************/
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
@@ -359,11 +354,11 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  break;
 	case SYS_READ:
 	  chk_addr_area(f->esp, 4, 12, 4);
-	  f->eax = sys_read(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12), *(uint32_t *)f->esp);
+	  f->eax = sys_read(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
 	  break;
 	case SYS_WRITE:
 	  chk_addr_area(f->esp, 4, 12, 4);
-	  f->eax = sys_write(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12), *(uint32_t *)f->esp);
+	  f->eax = sys_write(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8), *(uint32_t *)(f->esp + 12));
 	  break;
 	case SYS_FIBO:
 	  chk_addr_area(f->esp, 4, 4, 4);
@@ -401,13 +396,14 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
 	  break;
-	case SYS_MMAP:
+	/*case SYS_MMAP:
 	  chk_addr_area(f->esp, 4, 8, 4);
 	  f->eax = sys_mmap(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
 	  break;
 	case SYS_MUNMAP:
 	  chk_addr_area(f->esp, 4, 4, 4);
 	  sys_munmap(*(uint32_t *)(f->esp + 4));
+	  break;*/
   }
 }
 

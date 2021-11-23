@@ -1,5 +1,3 @@
-#include <stdlib.h>
-#include <stdlib.h>
 #include "page.h"
 #include "threads/synch.h"
 #include "threads/palloc.h"
@@ -8,9 +6,11 @@
 #include "userprog/process.h"
 #include "threads/vaddr.h"
 #include "vm/swap.h"
+#include "userprog/pagedir.h"
+#include <stdlib.h>
 
 static unsigned spt_hash_func(const struct hash_elem *he, void *aux UNUSED){
-  return hash_int(hash_entry(he, struct spt_entry, h_elem)->vpn);
+  return hash_int((int)hash_entry(he, struct spt_entry, h_elem)->vpn);
 }
 
 static bool spt_less_func(const struct hash_elem *he1, const struct hash_elem *he2, void *aux UNUSED){
@@ -35,7 +35,7 @@ struct spt_entry *find_spt_entry(void *va){
 
   spte.vpn = pg_round_down(va);
   if(!(he = hash_find(&thread_current()->spt, &spte.h_elem))){
-	return 0;
+	return false;
   }
   return hash_entry(he, struct spt_entry, h_elem);
 }
@@ -56,7 +56,7 @@ void spt_destroy(struct hash *spt){
   hash_destroy(spt, spte_free);
 }
 
-void page_evict(){
+void page_evict(void){
   struct hash_iterator i;
   struct thread *t = thread_current();
   struct spt_entry *spte = 0;
@@ -65,7 +65,7 @@ void page_evict(){
     spte = hash_entry(hash_cur(&i), struct spt_entry, h_elem);
 	if(!spte->pinned && spte->swap_idx == -1){
 	  spte->swap_idx = swap_out(spte->pfn);
-	  pagedir_clear_page(spte->t->pagedir, spte->vpn);
+	  pagedir_clear_page(t->pagedir, spte->vpn);
 	  palloc_free_page(spte->pfn);
 	  spte->pfn = 0;
 	  spte->t = 0;
