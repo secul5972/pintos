@@ -155,7 +155,6 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   /**pj4****************************************************/
-
   if(not_present){
 	struct spt_entry *spte = find_spt_entry(fault_addr);
 	if(spte){

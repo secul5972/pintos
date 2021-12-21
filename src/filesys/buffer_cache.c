@@ -82,6 +82,7 @@ struct buffer_cache_entry *buffer_cache_select_victim(void){
 	}
 	clock_hand = (clock_hand + 1) % NUM_CACHE;
   }
+  NOT_REACHTED();
 }
 
 void buffer_cache_flush_entry(struct buffer_cache_entry *bce){
