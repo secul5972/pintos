@@ -70,6 +70,27 @@ void chk_buffer_area(const void *buffer, unsigned size){
 	  }
 	  spte->pinned = 1;
 	}
+/*	else{
+	  if(s_vpn >= PHYS_BASE - 8 * 1024 * 1024){
+		void *kpage = 0;
+		struct spt_entry *spte = malloc(sizeof(struct spt_entry));
+		while(!(kpage = palloc_get_page(PAL_USER)))
+		  page_evict();
+
+		spte->pfn = pg_round_down(kpage);
+		spte->vpn = s_vpn;
+		spte->writable = 1;
+		spte->pinned = 1;
+		spte->t = thread_current();
+		spte->swap_idx = -1;
+
+		if(!install_page(spte->vpn, kpage, 1) || !insert_spte(&thread_current()->spt, spte)){
+		  palloc_free_page(kpage);
+		  free(spte);
+		  sys_exit(-1);
+		}
+	  }
+	}*/
   }
 }
 /********************************************************/

@@ -3,6 +3,8 @@
 #include "filesys/filesys.h"
 
 static int clock_hand;
+static struct buffer_cache_entry cache[NUM_CACHE];
+
 
 void buffer_cache_init(void){
   for(int i = 0; i < NUM_CACHE; i++){
@@ -82,7 +84,6 @@ struct buffer_cache_entry *buffer_cache_select_victim(void){
 	}
 	clock_hand = (clock_hand + 1) % NUM_CACHE;
   }
-  NOT_REACHTED();
 }
 
 void buffer_cache_flush_entry(struct buffer_cache_entry *bce){
