@@ -130,10 +130,9 @@ struct dir* path_parsing(const char *path, char *file_name){
   struct dir *dir;
   char tmp[PATH_LEN + 1];
   char *token, *token2, *save_ptr; 
-  if(!path || !file_name)
+  if(!path || !strlen(path) || !file_name)
 	return 0;
-  if(strlen(path) == 0)
-	return 0;
+  
   strlcpy(tmp, path, PATH_LEN);
 
   if(tmp[0] == '/')	dir = dir_open_root();
@@ -142,19 +141,14 @@ struct dir* path_parsing(const char *path, char *file_name){
   if(!inode_isdir(dir_get_inode(dir)))
     return 0;
   
-  token = strtok_r(tmp, "/", &save_ptr);
-  if(!token){
+  if(!(token = strtok_r(tmp, "/", &save_ptr))){
     strlcpy(file_name, ".", PATH_LEN);
 	return dir;
   }
   token2 = strtok_r(0, "/", &save_ptr);
   while(token && token2){
 	struct inode *inode = 0;
-	if(!dir_lookup(dir, token, &inode)){
-	  dir_close(dir);
-	  return 0;
-	}
-	if(!inode_isdir(inode)){
+	if(!dir_lookup(dir, token, &inode) || !inode_isdir(inode)){
 	  dir_close(dir);
 	  return 0;
 	}
