@@ -115,7 +115,10 @@ thread_init (void)
   //initailization
   initial_thread->nice = 0;
   initial_thread->recent_cpu = 0;
+  /***pj5*************************************************/
+  initial_thread->t_dir = 0;
   /*******************************************************/
+
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -235,7 +238,8 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
+  if(thread_current()->t_dir)
+	t->t_dir = dir_reopen(thread_current()->t_dir);
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;

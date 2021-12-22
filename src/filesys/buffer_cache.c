@@ -92,12 +92,10 @@ void buffer_cache_flush_entry(struct buffer_cache_entry *bce){
 	bce->dirty_bit = 0;
 	lock_release(&bc_lock);
   }
-  return ;
 }
 
 void buffer_cache_terminate(void){
   for(int i = 0; i < NUM_CACHE; i++){
 	buffer_cache_flush_entry(&cache[i]);
   }
-  return ;
 }

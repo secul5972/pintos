@@ -14,6 +14,8 @@
 #include "userprog/process.h"
 #include "threads/palloc.h"
 #include "vm/swap.h"
+#include "filesys/directory.h"
+#include "filesys/inode.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -152,6 +154,7 @@ int sys_write(int fd, const void *buffer, unsigned size){
 	lock_acquire(&f_lock);
 	//deny writing executing file
 	chk_deny_write(t->fd[fd], 0, 0);
+	
 	int ret = file_write(t->fd[fd], buffer, size);
 	lock_release(&f_lock);
 	return ret;
@@ -240,94 +243,54 @@ unsigned sys_tell(int fd){
   lock_release(&f_lock);
   return ret;
 }
-/**pj4****************************************************/
-/*int sys_mmap(int fd, void *addr){
-  struct file *file = file_reopen(thread_current()->fd[fd]);
-  uint32_t read_bytes = file_length(file);
-  //uint32_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
-  void *upage = addr;
-  int32_t ofs = 0;
-  thread_current()->mfd[fd] = addr;
-  thread_current()->msize[fd] = read_bytes;
-
-  while (read_bytes > 0 || zero_bytes > 0) 
-    {
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-	  
-	  uint8_t *kpage;
-	  while(!(kpage = palloc_get_page (PAL_USER | PAL_ZERO)))
-		page_evict();
-
-	  if(file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-		{
-		  palloc_free_page(kpage);
-		  return false;
-		}
-	  memset(kpage + page_read_bytes, 0, page_zero_bytes);
-	  if(!install_page(upage, kpage, 1))
-		{
-		  palloc_free_page(kpage);
-		  return false;
-		}
- 
-	  struct spt_entry *spte = malloc(sizeof(struct spt_entry));
-	  spte->vpn = pg_round_down(upage);
-	  spte->writable = 1;
-	  spte->pinned = 1;
-	  spte->pfn = pg_round_down(kpage);
-	  spte->t = thread_current();
-	  spte->swap_idx = -1;
-	  spte->mapid = fd;
-	 // spte->file = file;
-	 // spte->ofs = ofs;
-	 // spte->read_bytes = page_read_bytes;
-
-	  if(!insert_spte(&thread_current()->spt, spte)){
-		palloc_free_page(kpage);
-		free(spte);
-		return -1;
-	  }
-
-      read_bytes -= page_read_bytes;
-      //zero_bytes -= page_zero_bytes;
-	 // ofs += page_read_bytes;
-      upage += PGSIZE;
-    }
-  return fd;
+/**pj5*******************************************************/
+bool sys_isdir(int fd){
+  struct file *file = thread_current()->fd[fd];
+  if(!file)
+	return false;
+  return inode_isdir(file_get_inode(file));
 }
-
-void sys_munmap(mapid_t mapping){
-  struct thread *t = thread_current();
-  struct spt_entry *spte = 0;
-  void *addr = t->mfd[mapping];
-  void *addr_end = addr + t->msize[mapping];
-  for(;addr <= addr_end; addr += PGSIZE){
-  	spte = find_spt_entry(addr);
-	if(spte->mapid == mapping || !mapping){
-	  if(spte->swap_idx != -1){
-	    void *kpage = 0;
-		while(!(kpage = palloc_get_page(PAL_USER)))
-		  page_evict();
-		
-		swap_in(spte->vpn, kpage);
-		if(!install_page(spte->vpn, kpage, spte->writable)){
-		  palloc_free_page(kpage);
-		  sys_exit(-1);
-		}
-	  }
-
-	  delete_spte(&t->spt, spte);
-	  lock_acquire(&f_lock);
-	  file_write_at(spte->file, spte->vpn, spte->read_bytes, spte->ofs);
-	  lock_release(&f_lock);
-	  pagedir_clear_page(t->pagedir, spte->vpn);
-	  palloc_free_page(spte->pfn);
-	  free(spte);
-    }
-  }
-}*/
-/*********************************************************/
+bool sys_chdir(char *path){
+  char tmp[PATH_LEN + 1];
+  char name[PATH_LEN + 1];
+  strlcpy(tmp, path, PATH_LEN);
+  strlcat(tmp, "/0", PATH_LEN);
+  struct dir *dir = path_parsing(tmp, name);
+  if(!dir)
+	return false;
+  dir_close(thread_current()->t_dir);
+  thread_current()->t_dir = dir;
+  return true;
+}
+bool sys_mkdir(const char *dir){
+  return filesys_create_dir(dir);
+}
+bool sys_readdir(int fd, char *name){
+  struct file *file = thread_current()->fd[fd];
+  if(!file)
+	sys_exit(-1);	
+  struct inode *inode = file_get_inode(file);
+  if(!inode || !inode_isdir(inode))
+	return false;
+  struct dir *dir = dir_open(inode);
+  if(!dir)
+	return false;
+  int i = 0;
+  bool result = true;
+  off_t *pos = (off_t *)file + 1;
+  for(i=0;i<= *pos && result; i++)
+	result = dir_readdir(dir, name);
+  if(i <= *pos == false)
+	(*pos)++;
+  return result;
+}
+int sys_inumber(int fd){
+  struct file *file = thread_current()->fd[fd];
+  if(!file)
+	sys_exit(-1);
+  return inode_get_inumber(file_get_inode(file));
+}
+/************************************************************/
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
@@ -396,14 +359,26 @@ syscall_handler (struct intr_frame *f UNUSED)
 	  chk_addr_area(f->esp, 4, 4, 4);
 	  f->eax = sys_tell(*(uint32_t *)(f->esp + 4));
 	  break;
-	/*case SYS_MMAP:
-	  chk_addr_area(f->esp, 4, 8, 4);
-	  f->eax = sys_mmap(*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
-	  break;
-	case SYS_MUNMAP:
+	case SYS_ISDIR:
 	  chk_addr_area(f->esp, 4, 4, 4);
-	  sys_munmap(*(uint32_t *)(f->esp + 4));
-	  break;*/
+	  f->eax = sys_isdir(*(uint32_t *)(f->esp + 4));
+	  break;
+	case SYS_CHDIR:
+	  chk_addr_area(f->esp, 4, 4, 4);
+	  f->eax = sys_chdir(*(uint32_t *)(f->esp + 4));
+	  break;
+	case SYS_MKDIR:
+	  chk_addr_area(f->esp, 4, 4, 4);
+	  f->eax = sys_mkdir(*(uint32_t *)(f->esp + 4));
+	  break;
+	case SYS_READDIR:
+	  chk_addr_area(f->esp, 4, 8, 4);
+	  f->eax = sys_readdir((char *)*(uint32_t *)(f->esp + 4), *(uint32_t *)(f->esp + 8));
+	  break;
+	case SYS_INUMBER:
+	  chk_addr_area(f->esp, 4, 4, 4);
+	  f->eax = sys_inumber(*(uint32_t *)(f->esp + 4));
+	  break;
   }
 }
 

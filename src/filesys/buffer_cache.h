@@ -16,7 +16,7 @@ struct buffer_cache_entry{
   uint8_t buffer[BLOCK_SECTOR_SIZE];
 };
 
-struct buffer_cache_entry cache[NUM_CACHE];
+static struct buffer_cache_entry cache[NUM_CACHE];
 struct lock bc_lock;
 
 void buffer_cache_init(void);

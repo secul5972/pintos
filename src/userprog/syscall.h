@@ -26,6 +26,11 @@ unsigned sys_tell(int fd);
 void chk_addr_area(const void *addr, int offset, int end, int bytes);
 /**pj4*******************************************************/
 void chk_buffer_area(const void *buffer, unsigned size);
-/*int sys_mmap(int fd, void *addr);*/
+/**pj5*******************************************************/
+bool sys_isdir(int fd);
+bool sys_chdir(char *path);
+bool sys_mkdir(const char *dir);
+bool sys_readdir(int fd, char *name);
+int sys_inumber(int fd);
 /************************************************************/
 #endif /* userprog/syscall.h */

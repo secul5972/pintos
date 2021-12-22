@@ -22,7 +22,7 @@ block_sector_t s_block[INDIRECT_ENTRIES];
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-	uint32_t unused;
+	uint32_t is_dir; 
     off_t length;                     /* File size in bytes. */
     unsigned magic;                   /* Magic number. */
 	uint32_t direct[DIRECT_ENTRIES];
@@ -97,7 +97,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, uint32_t is_dir)
 {
   bool success = false;
   struct inode_disk *disk_inode = NULL;
@@ -115,6 +115,7 @@ inode_create (block_sector_t sector, off_t length)
 
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
+	  disk_inode->is_dir = is_dir;
 
 	  for(i = 0; i < DIRECT_ENTRIES && sectors - i > 0; i++){
 		if(!free_map_allocate(1, &disk_inode->direct[i]))
@@ -305,10 +306,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   if (inode->deny_write_cnt)
     return 0;
-  
+
   lock_acquire(&inode->i_lock);
   buffer_cache_read(inode->sector, &disk_inode, 0, BLOCK_SECTOR_SIZE, 0);
- if(disk_inode.length < offset + size){
+  if(disk_inode.length < offset + size){
 	if(!grow_inode_disk(&disk_inode, offset + size))
 	  return 0;
 	buffer_cache_write(inode->sector, &disk_inode, 0, BLOCK_SECTOR_SIZE, 0);
@@ -336,7 +337,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       offset += chunk_size;
       bytes_written += chunk_size;
     }
-  lock_release(&inode->i_lock);
+   lock_release(&inode->i_lock);
   return bytes_written;
 }
 
@@ -470,4 +471,12 @@ bool grow_inode_disk(struct inode_disk *disk_inode, off_t length){
   }
   disk_inode->length = length;
   return true;
+}
+bool inode_isdir(const struct inode *inode){
+  struct inode_disk disk_inode;
+  if(inode->removed)
+	return false;
+  if(!buffer_cache_read(inode->sector, &disk_inode, 0, BLOCK_SECTOR_SIZE, 0))
+	return false;
+  return disk_inode.is_dir;
 }
